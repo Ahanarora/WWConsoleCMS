@@ -4,17 +4,24 @@ import DraftForm from "../components/DraftForm";
 import type { DraftFormData } from "../components/DraftForm";
 import DraftCard from "../components/DraftCard";
 import Loader from "../components/Loader";
+import { useToast } from "../hooks/useToast";
 
 export default function Drafts() {
   const [drafts, setDrafts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const { showToast, ToastContainer } = useToast();
 
   async function loadDrafts() {
     setLoading(true);
-    const data = await fetchDrafts();
-    setDrafts(data);
-    setLoading(false);
+    try {
+      const data = await fetchDrafts();
+      setDrafts(data);
+    } catch {
+      showToast("Failed to fetch drafts.", "error");
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -23,22 +30,34 @@ export default function Drafts() {
 
   async function handleCreate(data: DraftFormData) {
     setCreating(true);
-    await createDraft(data);
-    setCreating(false);
-    await loadDrafts();
+    try {
+      await createDraft(data);
+      showToast("Draft created successfully!", "success");
+      await loadDrafts();
+    } catch {
+      showToast("Failed to create draft.", "error");
+    } finally {
+      setCreating(false);
+    }
   }
 
   async function handleDelete(id: string) {
     if (confirm("Delete this draft?")) {
-      await deleteDraft(id);
-      await loadDrafts();
+      try {
+        await deleteDraft(id);
+        showToast("Draft deleted.", "success");
+        await loadDrafts();
+      } catch {
+        showToast("Delete failed.", "error");
+      }
     }
   }
 
-  if (loading) return <Loader />;
-
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 relative">
+      {ToastContainer}
+      {(loading || creating) && <Loader />}
+
       <h1 className="text-2xl font-semibold text-gray-800">Drafts</h1>
 
       <section className="bg-gray-100 p-5 rounded-xl">
