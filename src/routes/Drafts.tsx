@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { fetchDrafts, deleteDraft, createDraft } from "../utils/firestoreHelpers";
 import DraftForm from "../components/DraftForm";
 import type { DraftFormData } from "../components/DraftForm";
+import DraftCard from "../components/DraftCard";
 import Loader from "../components/Loader";
-import { Link } from "react-router-dom";
 
 export default function Drafts() {
   const [drafts, setDrafts] = useState<any[]>([]);
@@ -38,43 +38,32 @@ export default function Drafts() {
   if (loading) return <Loader />;
 
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-semibold">Drafts</h1>
+    <div className="space-y-8">
+      <h1 className="text-2xl font-semibold text-gray-800">Drafts</h1>
 
-      <DraftForm onSubmit={handleCreate} isSubmitting={creating} />
+      <section className="bg-gray-100 p-5 rounded-xl">
+        <h2 className="font-semibold text-gray-700 mb-3">Create New Draft</h2>
+        <DraftForm onSubmit={handleCreate} isSubmitting={creating} />
+      </section>
 
-      <div className="mt-8">
-        <h2 className="text-lg font-semibold mb-3">Existing Drafts</h2>
-        {drafts.length === 0 && <p className="text-gray-500">No drafts yet.</p>}
-
-        <ul className="space-y-3">
-          {drafts.map((d) => (
-            <li
-              key={d.id}
-              className="flex justify-between items-center bg-white rounded shadow p-3"
-            >
-              <div>
-                <p className="font-medium">{d.title}</p>
-                <p className="text-sm text-gray-500">{d.overview}</p>
-              </div>
-              <div className="space-x-2">
-                <Link
-                  to={`/drafts/${d.id}`}
-                  className="text-blue-600 hover:underline"
-                >
-                  Edit
-                </Link>
-                <button
-                  onClick={() => handleDelete(d.id)}
-                  className="text-red-500 hover:underline"
-                >
-                  Delete
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </div>
+      <section>
+        <h2 className="font-semibold text-gray-700 mb-4">All Drafts</h2>
+        {drafts.length === 0 ? (
+          <p className="text-gray-500">No drafts yet.</p>
+        ) : (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {drafts.map((d) => (
+              <DraftCard
+                key={d.id}
+                id={d.id}
+                title={d.title}
+                overview={d.overview}
+                onDelete={() => handleDelete(d.id)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
