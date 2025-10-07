@@ -1,3 +1,4 @@
+// src/main.tsx
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
@@ -14,7 +15,7 @@ const router = createBrowserRouter([
     children: [
       { path: "/", element: <Dashboard /> },
       { path: "/drafts", element: <Drafts /> },
-      { path: "/drafts/:id", element: <EditDraft /> },
+      { path: "/drafts/:id", element: <EditDraft /> }, // 👈 important
       { path: "/users", element: <Users /> },
     ],
   },

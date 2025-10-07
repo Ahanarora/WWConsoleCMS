@@ -1,88 +1,108 @@
-import { useEffect, useState } from "react";
-import { fetchDrafts, deleteDraft, createDraft } from "../utils/firestoreHelpers";
-import DraftForm from "../components/DraftForm";
-import type { DraftFormData } from "../components/DraftForm";
-import DraftCard from "../components/DraftCard";
-import Loader from "../components/Loader";
-import { useToast } from "../hooks/useToast";
+import React, { useEffect, useState } from "react";
+import { fetchDrafts, createDraft, deleteDraft } from "../utils/firestoreHelpers";
 
 export default function Drafts() {
   const [drafts, setDrafts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
-  const { showToast, ToastContainer } = useToast();
+  const [title, setTitle] = useState("");
+  const [overview, setOverview] = useState("");
 
-  async function loadDrafts() {
-    setLoading(true);
-    try {
-      const data = await fetchDrafts();
-      setDrafts(data);
-    } catch {
-      showToast("Failed to fetch drafts.", "error");
-    } finally {
-      setLoading(false);
-    }
-  }
-
+  // ✅ Fetch drafts on mount
   useEffect(() => {
+    const loadDrafts = async () => {
+      try {
+        const data = await fetchDrafts();
+        setDrafts(data);
+      } catch (err) {
+        console.error("Error loading drafts:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
     loadDrafts();
   }, []);
 
-  async function handleCreate(data: DraftFormData) {
+  // ✅ Create new draft
+  const handleCreate = async () => {
+    if (!title.trim() || !overview.trim()) return alert("Please fill all fields");
     setCreating(true);
     try {
-      await createDraft(data);
-      showToast("Draft created successfully!", "success");
-      await loadDrafts();
-    } catch {
-      showToast("Failed to create draft.", "error");
+      await createDraft({ title, overview });
+      setTitle("");
+      setOverview("");
+      const updated = await fetchDrafts();
+      setDrafts(updated);
+    } catch (err) {
+      console.error("Error creating draft:", err);
+      alert("Failed to create draft");
     } finally {
       setCreating(false);
     }
-  }
+  };
 
-  async function handleDelete(id: string) {
-    if (confirm("Delete this draft?")) {
-      try {
-        await deleteDraft(id);
-        showToast("Draft deleted.", "success");
-        await loadDrafts();
-      } catch {
-        showToast("Delete failed.", "error");
-      }
-    }
-  }
+  // ✅ Delete draft
+  const handleDelete = async (id: string) => {
+    if (!confirm("Delete this draft?")) return;
+    await deleteDraft(id);
+    const updated = await fetchDrafts();
+    setDrafts(updated);
+  };
 
   return (
-    <div className="space-y-8 relative">
-      {ToastContainer}
-      {(loading || creating) && <Loader />}
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-4">Drafts</h1>
 
-      <h1 className="text-2xl font-semibold text-gray-800">Drafts</h1>
+      {/* Create New Draft */}
+      <div className="space-y-2 mb-6">
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Title"
+          className="border p-2 rounded w-full"
+        />
+        <textarea
+          value={overview}
+          onChange={(e) => setOverview(e.target.value)}
+          placeholder="Overview"
+          className="border p-2 rounded w-full"
+          rows={3}
+        />
+        <button
+          onClick={handleCreate}
+          disabled={creating}
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+        >
+          {creating ? "Creating..." : "Create Draft"}
+        </button>
+      </div>
 
-      <section className="bg-gray-100 p-5 rounded-xl">
-        <h2 className="font-semibold text-gray-700 mb-3">Create New Draft</h2>
-        <DraftForm onSubmit={handleCreate} isSubmitting={creating} />
-      </section>
-
-      <section>
-        <h2 className="font-semibold text-gray-700 mb-4">All Drafts</h2>
-        {drafts.length === 0 ? (
-          <p className="text-gray-500">No drafts yet.</p>
-        ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {drafts.map((d) => (
-              <DraftCard
-                key={d.id}
-                id={d.id}
-                title={d.title}
-                overview={d.overview}
-                onDelete={() => handleDelete(d.id)}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+      {/* Drafts List */}
+      {loading ? (
+        <p>Loading drafts...</p>
+      ) : drafts.length === 0 ? (
+        <p className="text-gray-500">No drafts found.</p>
+      ) : (
+        <ul className="space-y-3">
+          {drafts.map((d) => (
+            <li
+              key={d.id}
+              className="border p-4 rounded flex justify-between items-center"
+            >
+              <div>
+                <h2 className="font-semibold">{d.title}</h2>
+                <p className="text-sm text-gray-600">{d.overview}</p>
+              </div>
+              <button
+                onClick={() => handleDelete(d.id)}
+                className="text-red-600 hover:underline"
+              >
+                Delete
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
