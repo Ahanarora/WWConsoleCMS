@@ -1,5 +1,5 @@
 // ----------------------------------------
-// src/utils/firestoreHelpers.ts (fixed)
+// src/utils/firestoreHelpers.ts
 // ----------------------------------------
 
 import { db } from "../firebase";
@@ -35,7 +35,7 @@ export interface AnalysisSection {
   future: { question: string; answer: string }[];
 }
 
-// Main Draft schema
+// ✅ Main Draft schema (finalized)
 export interface Draft {
   id?: string;
   title: string;
@@ -43,11 +43,16 @@ export interface Draft {
   category: string;
   subcategory: string;
   tags: string[];
-  status: string;
   imageUrl?: string;
   sources: string[];
   timeline: TimelineEvent[];
   analysis: AnalysisSection;
+
+  // 🆕 New fields for workflow and publishing
+  status?: "draft" | "review" | "published";
+  slug: string;
+  editorNotes?: string;
+
   updatedAt?: any;
 }
 
@@ -63,11 +68,20 @@ export const createDraft = async (data: Partial<Draft>) => {
     category: data.category || "",
     subcategory: data.subcategory || "",
     tags: data.tags || [],
-    status: data.status || "draft",
     imageUrl: data.imageUrl || "",
     sources: data.sources || [],
     timeline: [],
     analysis: { stakeholders: [], faqs: [], future: [] },
+
+    // Workflow defaults
+    status: data.status || "draft",
+    slug:
+      data.slug ||
+      (data.title
+        ? data.title.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, "")
+        : ""),
+    editorNotes: data.editorNotes || "",
+
     updatedAt: serverTimestamp(),
   };
 
