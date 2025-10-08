@@ -1,4 +1,8 @@
-// src/utils/firestoreHelpers.ts
+// ----------------------------------------
+// src/utils/firestoreHelpers.ts (fixed)
+// ----------------------------------------
+
+import { db } from "../firebase";
 import {
   collection,
   addDoc,
@@ -7,88 +11,148 @@ import {
   updateDoc,
   deleteDoc,
   doc,
+  serverTimestamp,
 } from "firebase/firestore";
-import { db } from "../firebase";
 
-/**
- * Reference to the "drafts" collection in Firestore.
- */
-const draftsCollection = collection(db, "drafts");
+// ---------------------------
+// 🔹 Type Definitions
+// ---------------------------
 
-/**
- * Fetch all drafts from Firestore.
- */
-export async function fetchDrafts() {
-  try {
-    const snapshot = await getDocs(draftsCollection);
-    const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-    console.log("Fetched drafts:", data);
-    return data;
-  } catch (error) {
-    console.error("Error fetching drafts:", error);
-    throw error;
-  }
+// Each timeline event in a draft
+export interface TimelineEvent {
+  date: string;
+  event: string;
+  description: string;
+  significance: number; // 1–3
+  imageUrl?: string;
+  sourceLink?: string;
 }
 
-/**
- * Fetch a single draft by its document ID.
- */
-export async function fetchDraft(id: string) {
-  try {
-    const docRef = doc(db, "drafts", id);
-    const snapshot = await getDoc(docRef);
-    if (!snapshot.exists()) throw new Error("Draft not found");
-    return { id: snapshot.id, ...snapshot.data() };
-  } catch (error) {
-    console.error("Error fetching draft:", error);
-    throw error;
-  }
+// Analysis structure (3 collapsible tabs)
+export interface AnalysisSection {
+  stakeholders: { name: string; detail: string }[];
+  faqs: { question: string; answer: string }[];
+  future: { question: string; answer: string }[];
 }
 
-/**
- * Create a new draft in Firestore.
- */
-export async function createDraft(data: any) {
-  try {
-    const docRef = await addDoc(draftsCollection, {
-      ...data,
-      createdAt: new Date(),
-      status: "draft",
-    });
-    console.log("Draft created:", docRef.id);
-    return docRef;
-  } catch (error) {
-    console.error("Error creating draft:", error);
-    throw error;
-  }
+// Main Draft schema
+export interface Draft {
+  id?: string;
+  title: string;
+  overview: string;
+  category: string;
+  subcategory: string;
+  tags: string[];
+  status: string;
+  imageUrl?: string;
+  sources: string[];
+  timeline: TimelineEvent[];
+  analysis: AnalysisSection;
+  updatedAt?: any;
 }
 
-/**
- * Update an existing draft in Firestore.
- */
-export async function updateDraft(id: string, data: any) {
-  try {
-    const docRef = doc(db, "drafts", id);
-    await updateDoc(docRef, {
-      ...data,
-      updatedAt: new Date(),
-    });
-    console.log("Draft updated:", id);
-  } catch (error) {
-    console.error("Error updating draft:", error);
-    throw error;
-  }
-}
+// ---------------------------
+// 🔹 Firestore CRUD Functions
+// ---------------------------
 
-/**
- * Delete a draft from Firestore by ID.
- */
-export async function deleteDraft(id: string) {
-  try {
-    await deleteDoc(doc(db, "drafts", id));
-    console.log("Draft deleted:", id);
-  } catch (error) {
-    console.error("Error deleting draft:", error);
-    throw error;
-  }
-}
+/** Create a new draft with full schema defaults */
+export const createDraft = async (data: Partial<Draft>) => {
+  const defaultDraft: Draft = {
+    title: data.title || "",
+    overview: data.overview || "",
+    category: data.category || "",
+    subcategory: data.subcategory || "",
+    tags: data.tags || [],
+    status: data.status || "draft",
+    imageUrl: data.imageUrl || "",
+    sources: data.sources || [],
+    timeline: [],
+    analysis: { stakeholders: [], faqs: [], future: [] },
+    updatedAt: serverTimestamp(),
+  };
+
+  const docRef = await addDoc(collection(db, "drafts"), defaultDraft);
+  return docRef.id;
+};
+
+/** Fetch all drafts */
+export const fetchDrafts = async (): Promise<Draft[]> => {
+  const snapshot = await getDocs(collection(db, "drafts"));
+  return snapshot.docs.map((d) => ({
+    id: d.id,
+    ...(d.data() as Draft),
+  }));
+};
+
+/** Fetch one draft by ID */
+export const fetchDraft = async (id: string): Promise<Draft | null> => {
+  const docRef = doc(db, "drafts", id);
+  const snapshot = await getDoc(docRef);
+  return snapshot.exists()
+    ? ({ id: snapshot.id, ...(snapshot.data() as Draft) } as Draft)
+    : null;
+};
+
+/** Generic update for any fields */
+export const updateDraft = async (id: string, newData: Partial<Draft>) => {
+  const docRef = doc(db, "drafts", id);
+  await updateDoc(docRef, {
+    ...newData,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+/** Delete draft */
+export const deleteDraft = async (id: string) => {
+  const docRef = doc(db, "drafts", id);
+  await deleteDoc(docRef);
+};
+
+// ---------------------------
+// 🔹 Timeline Helpers
+// ---------------------------
+
+/** Add a new event to timeline */
+export const addTimelineEvent = async (
+  id: string,
+  eventData: Partial<TimelineEvent>
+) => {
+  const draft = await fetchDraft(id);
+  if (!draft) throw new Error("Draft not found");
+
+  const newEvent: TimelineEvent = {
+    date: eventData.date || "",
+    event: eventData.event || "",
+    description: eventData.description || "",
+    significance: eventData.significance || 1,
+    imageUrl: eventData.imageUrl || "",
+    sourceLink: eventData.sourceLink || "",
+  };
+
+  const updatedTimeline = [...(draft.timeline || []), newEvent];
+  await updateDraft(id, { timeline: updatedTimeline });
+};
+
+/** Update an existing event in timeline */
+export const updateTimelineEvent = async (
+  id: string,
+  index: number,
+  eventData: Partial<TimelineEvent>
+) => {
+  const draft = await fetchDraft(id);
+  if (!draft) throw new Error("Draft not found");
+
+  const updatedTimeline = [...(draft.timeline || [])];
+  updatedTimeline[index] = { ...updatedTimeline[index], ...eventData };
+
+  await updateDraft(id, { timeline: updatedTimeline });
+};
+
+/** Delete an event from timeline */
+export const deleteTimelineEvent = async (id: string, index: number) => {
+  const draft = await fetchDraft(id);
+  if (!draft) throw new Error("Draft not found");
+
+  const updatedTimeline = draft.timeline.filter((_, i) => i !== index);
+  await updateDraft(id, { timeline: updatedTimeline });
+};

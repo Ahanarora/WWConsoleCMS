@@ -1,108 +1,212 @@
-import React, { useEffect, useState } from "react";
-import { fetchDrafts, createDraft, deleteDraft } from "../utils/firestoreHelpers";
+// -----------------------------
+// src/routes/Drafts.tsx
+// -----------------------------
 
+import React, { useState, useEffect } from "react";
+import { createDraft, fetchDrafts, deleteDraft } from "../utils/firestoreHelpers";
+import { useNavigate } from "react-router-dom";
+
+/**
+ * Drafts.tsx
+ * - Shows a form for creating new drafts
+ * - Lists existing drafts with Edit/Delete options
+ * - Redirects to EditDraft.tsx after creation
+ */
 export default function Drafts() {
+  const [formData, setFormData] = useState({
+    title: "",
+    overview: "",
+    category: "",
+    subcategory: "",
+    tags: "",
+    status: "draft",
+    significance: 1,
+  });
+
   const [drafts, setDrafts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
-  const [title, setTitle] = useState("");
-  const [overview, setOverview] = useState("");
+  const navigate = useNavigate();
 
-  // ✅ Fetch drafts on mount
+  // Fetch all drafts when page loads
   useEffect(() => {
-    const loadDrafts = async () => {
+    const load = async () => {
       try {
-        const data = await fetchDrafts();
-        setDrafts(data);
+        const list = await fetchDrafts();
+        // Sort drafts by most recent
+        list.sort((a: any, b: any) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0));
+        setDrafts(list);
       } catch (err) {
-        console.error("Error loading drafts:", err);
+        console.error(err);
+        alert("Failed to fetch drafts.");
       } finally {
         setLoading(false);
       }
     };
-    loadDrafts();
+    load();
   }, []);
 
-  // ✅ Create new draft
-  const handleCreate = async () => {
-    if (!title.trim() || !overview.trim()) return alert("Please fill all fields");
-    setCreating(true);
+  /**
+   * Handle input changes in the form
+   */
+  const handleChange = (e: any) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  /**
+   * Create a new draft and redirect to Edit page
+   */
+  const handleSubmit = async (e: any) => {
+    e.preventDefault();
     try {
-      await createDraft({ title, overview });
-      setTitle("");
-      setOverview("");
-      const updated = await fetchDrafts();
-      setDrafts(updated);
+      const id = await createDraft({
+        ...formData,
+        tags: formData.tags.split(",").map((t) => t.trim()),
+      });
+      alert("✅ Draft created successfully!");
+      navigate(`/drafts/${id}`); // Go directly to Edit interface
     } catch (err) {
-      console.error("Error creating draft:", err);
-      alert("Failed to create draft");
-    } finally {
-      setCreating(false);
+      console.error(err);
+      alert("❌ Failed to create draft.");
     }
   };
 
-  // ✅ Delete draft
+  /**
+   * Delete a draft
+   */
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this draft?")) return;
-    await deleteDraft(id);
-    const updated = await fetchDrafts();
-    setDrafts(updated);
+    if (!window.confirm("Are you sure you want to delete this draft?")) return;
+    try {
+      await deleteDraft(id);
+      setDrafts((prev) => prev.filter((d) => d.id !== id));
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to delete draft.");
+    }
   };
 
+  // -------------------- UI --------------------
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Drafts</h1>
+    <div className="p-6 max-w-6xl mx-auto">
+      <h1 className="text-3xl font-bold mb-6">📰 Draft Management</h1>
 
-      {/* Create New Draft */}
-      <div className="space-y-2 mb-6">
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Title"
-          className="border p-2 rounded w-full"
-        />
-        <textarea
-          value={overview}
-          onChange={(e) => setOverview(e.target.value)}
-          placeholder="Overview"
-          className="border p-2 rounded w-full"
-          rows={3}
-        />
-        <button
-          onClick={handleCreate}
-          disabled={creating}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
-        >
-          {creating ? "Creating..." : "Create Draft"}
-        </button>
+      {/* ---------- Create New Draft Form ---------- */}
+      <div className="bg-white p-6 rounded-lg shadow border border-gray-200 mb-8">
+        <h2 className="text-xl font-semibold mb-4">Create New Draft</h2>
+
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <input
+            name="title"
+            placeholder="Title"
+            value={formData.title}
+            onChange={handleChange}
+            required
+            className="border rounded p-2 w-full"
+          />
+          <input
+            name="category"
+            placeholder="Category"
+            value={formData.category}
+            onChange={handleChange}
+            className="border rounded p-2 w-full"
+          />
+          <input
+            name="subcategory"
+            placeholder="Subcategory"
+            value={formData.subcategory}
+            onChange={handleChange}
+            className="border rounded p-2 w-full"
+          />
+          <input
+            name="tags"
+            placeholder="Tags (comma separated)"
+            value={formData.tags}
+            onChange={handleChange}
+            className="border rounded p-2 w-full"
+          />
+          <select
+            name="status"
+            value={formData.status}
+            onChange={handleChange}
+            className="border rounded p-2 w-full"
+          >
+            <option value="draft">Draft</option>
+            <option value="review">Review</option>
+            <option value="published">Published</option>
+          </select>
+          <select
+            name="significance"
+            value={formData.significance}
+            onChange={handleChange}
+            className="border rounded p-2 w-full"
+          >
+            <option value={1}>1 (Low)</option>
+            <option value={2}>2 (Medium)</option>
+            <option value={3}>3 (High)</option>
+          </select>
+          <textarea
+            name="overview"
+            placeholder="Overview"
+            value={formData.overview}
+            onChange={handleChange}
+            rows={3}
+            className="border rounded p-2 w-full md:col-span-2"
+          />
+          <button
+            type="submit"
+            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 md:col-span-2"
+          >
+            + Create Draft
+          </button>
+        </form>
       </div>
 
-      {/* Drafts List */}
-      {loading ? (
-        <p>Loading drafts...</p>
-      ) : drafts.length === 0 ? (
-        <p className="text-gray-500">No drafts found.</p>
-      ) : (
-        <ul className="space-y-3">
-          {drafts.map((d) => (
-            <li
-              key={d.id}
-              className="border p-4 rounded flex justify-between items-center"
-            >
-              <div>
-                <h2 className="font-semibold">{d.title}</h2>
-                <p className="text-sm text-gray-600">{d.overview}</p>
-              </div>
-              <button
-                onClick={() => handleDelete(d.id)}
-                className="text-red-600 hover:underline"
-              >
-                Delete
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      {/* ---------- Existing Drafts Table ---------- */}
+      <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
+        <h2 className="text-xl font-semibold mb-4">Existing Drafts</h2>
+
+        {loading ? (
+          <p>Loading drafts...</p>
+        ) : drafts.length === 0 ? (
+          <p className="text-gray-600">No drafts yet.</p>
+        ) : (
+          <table className="w-full border-collapse text-left">
+            <thead>
+              <tr className="border-b bg-gray-50 text-sm text-gray-700">
+                <th className="p-2">Title</th>
+                <th className="p-2">Category</th>
+                <th className="p-2">Status</th>
+                <th className="p-2">Significance</th>
+                <th className="p-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {drafts.map((d) => (
+                <tr key={d.id} className="border-b hover:bg-gray-50 text-sm">
+                  <td className="p-2">{d.title || "Untitled"}</td>
+                  <td className="p-2">{d.category || "-"}</td>
+                  <td className="p-2">{d.status}</td>
+                  <td className="p-2">{d.significance}</td>
+                  <td className="p-2 text-right space-x-2">
+                    <button
+                      onClick={() => navigate(`/drafts/${d.id}`)}
+                      className="text-blue-600 hover:underline"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(d.id)}
+                      className="text-red-600 hover:underline"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
