@@ -13,6 +13,7 @@ import {
 } from "../utils/firestoreHelpers";
 import type { Draft, TimelineEvent, AnalysisSection } from "../utils/firestoreHelpers";
 import { generateTimeline, generateAnalysis } from "../utils/gptHelpers";
+import { fetchEventCoverage } from "../utils/fetchCoverage"; // ✅ new import
 
 export default function EditDraft() {
   const { id } = useParams<{ id: string }>();
@@ -410,12 +411,44 @@ export default function EditDraft() {
                       <option value={2}>Medium</option>
                       <option value={3}>High</option>
                     </select>
-                    <button
-                      onClick={() => handleDeleteEvent(i)}
-                      className="text-red-600 text-sm hover:underline"
-                    >
-                      Delete
-                    </button>
+
+                    {/* Buttons */}
+                    <div className="flex gap-4 items-center mt-2">
+                      <button
+                        onClick={() => handleDeleteEvent(i)}
+                        className="text-red-600 text-sm hover:underline"
+                      >
+                        Delete
+                      </button>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const { imageUrl, sourceLink } =
+                              await fetchEventCoverage(
+                                ev.event,
+                                ev.description
+                              );
+                            await handleUpdateEvent(
+                              i,
+                              "imageUrl",
+                              imageUrl || ""
+                            );
+                            await handleUpdateEvent(
+                              i,
+                              "sourceLink",
+                              sourceLink || ""
+                            );
+                            alert("✅ Auto-filled image & source link");
+                          } catch (err) {
+                            console.error(err);
+                            alert("❌ Failed to fetch coverage");
+                          }
+                        }}
+                        className="text-blue-600 text-sm hover:underline"
+                      >
+                        🔍 Auto-fetch Coverage
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

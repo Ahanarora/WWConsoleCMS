@@ -1,8 +1,8 @@
 // src/firebase.ts
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
-import { getStorage } from "firebase/storage";
+import { getFunctions } from "firebase/functions";
+
 
 // ✅ Your actual Firebase project config
 const firebaseConfig = {
@@ -15,10 +15,7 @@ const firebaseConfig = {
   measurementId: "G-H6R483JTGT"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-
 // ✅ Export Firebase services
+export const app = initializeApp(firebaseConfig);  // ✅ <--- add this export
 export const db = getFirestore(app);
-export const auth = getAuth(app);
-export const storage = getStorage(app);
+export const functions = getFunctions(app, "asia-south1");
