@@ -420,34 +420,46 @@ export default function EditDraft() {
                       >
                         Delete
                       </button>
-                      <button
-                        onClick={async () => {
-                          try {
-                            const { imageUrl, sourceLink } =
-                              await fetchEventCoverage(
-                                ev.event,
-                                ev.description
-                              );
-                            await handleUpdateEvent(
-                              i,
-                              "imageUrl",
-                              imageUrl || ""
-                            );
-                            await handleUpdateEvent(
-                              i,
-                              "sourceLink",
-                              sourceLink || ""
-                            );
-                            alert("✅ Auto-filled image & source link");
-                          } catch (err) {
-                            console.error(err);
-                            alert("❌ Failed to fetch coverage");
-                          }
-                        }}
-                        className="text-blue-600 text-sm hover:underline"
-                      >
-                        🔍 Auto-fetch Coverage
-                      </button>
+      <button
+  onClick={async () => {
+    try {
+      const res = await fetchEventCoverage(ev.event, ev.description, ev.date);
+
+      console.log("[UI] coverage response:", res);
+
+      if (!res?.imageUrl && !res?.sourceLink) {
+        alert("No highly relevant coverage found for this event.");
+        return;
+      }
+
+      // 1) Update local state immediately for fast UI feedback
+      const updatedTimeline = [...draft.timeline];
+      updatedTimeline[i] = {
+        ...updatedTimeline[i],
+        imageUrl: res.imageUrl || updatedTimeline[i].imageUrl,
+        sourceLink: res.sourceLink || updatedTimeline[i].sourceLink,
+      };
+      setDraft({ ...draft, timeline: updatedTimeline });
+
+      // 2) Persist to Firestore (use your existing helper)
+      if (res.sourceLink) {
+        await handleUpdateEvent(i, "sourceLink", res.sourceLink);
+      }
+      if (res.imageUrl) {
+        await handleUpdateEvent(i, "imageUrl", res.imageUrl);
+      }
+
+      alert("✅ Coverage updated for this event!");
+    } catch (e: any) {
+      console.error(e);
+      alert("❌ Failed to fetch coverage: " + (e?.message || "Unknown error"));
+    }
+  }}
+  className="text-blue-600 text-sm hover:underline"
+>
+  🔍 Fetch Coverage
+</button>
+
                     </div>
                   </div>
                 ))}

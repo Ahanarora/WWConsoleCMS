@@ -61,12 +61,12 @@ export async function generateTimeline(draft: Draft): Promise<TimelineEvent[]> {
   const prompt = `
 You are a news editor.
 Create a concise chronological timeline of key developments for the topic:
-"${draft.title}"
+"${draft.title}" Make your descriptions factual, data rich and in pointers
 
 Context:
 ${draft.overview}
 
-Return 5–10 events. Each must have date, event, short description, and significance (1=low,2=medium,3=high). 
+Return 10-15 events. Each must have date, event, short description, and significance (1=low,2=medium,3=high). 
 Use ISO date format (YYYY-MM-DD). Return only valid JSON.`;
 
   const result = await callOpenAI(prompt, schema);

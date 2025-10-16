@@ -1,84 +1,130 @@
-import { onCall, HttpsError } from "firebase-functions/v2/https";
+import * as functions from "firebase-functions/v2";
+import "./firebaseAdmin"; // initialize admin once for side-effect
 import Parser from "rss-parser";
 
-const parser = new Parser({
-  customFields: {
-    item: ["media:content", "enclosure"],
-  },
-});
+const parser = new Parser();
 
-// ----------------------
-// Helper 1: Simple similarity score
-// ----------------------
-function textSimilarity(a: string, b: string): number {
-  const wordsA = new Set(a.toLowerCase().split(/\W+/));
-  const wordsB = new Set(b.toLowerCase().split(/\W+/));
-  const intersection = [...wordsA].filter((w) => wordsB.has(w)).length;
-  const denominator = Math.sqrt(wordsA.size * wordsB.size);
-  return denominator ? intersection / denominator : 0;
+interface FetchEventCoverageData {
+  event: string;
+  description?: string;
+  date?: string; // event date from Firestore
 }
 
-// ----------------------
-// Helper 2: Extract image
-// ----------------------
-function extractImage(item: any): string | null {
-  return (
-    item["media:content"]?.url ||
-    item.enclosure?.url ||
-    null
-  );
-}
+export const fetchEventCoverage = functions.https.onCall(
+  { region: "asia-south1" },
+  async (request: functions.https.CallableRequest<FetchEventCoverageData>) => {
+    const { event, description = "", date } = request.data || {};
 
-// ----------------------
-// Main Function (v2 syntax)
-// ----------------------
-export const fetchEventCoverage = onCall(
-  { region: "asia-south1", timeoutSeconds: 15, memory: "256MiB" },
-  async (request: { data: { eventText: string; description?: string } }) => {
-    const { eventText, description } = request.data;
+    // 🚀 Log the incoming request
+    functions.logger.info("fetchEventCoverage called", { event, description, date });
 
-    if (!eventText || typeof eventText !== "string") {
-      throw new HttpsError("invalid-argument", "Missing or invalid 'eventText'");
+    if (!event) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Event title is required."
+      );
     }
 
-    const searchQuery = `${eventText} ${description || ""} site:(bbc.com OR reuters.com OR indianexpress.com OR aljazeera.com OR thehindu.com)`;
-    const feedUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(
-      searchQuery
-    )}&hl=en-IN&gl=IN&ceid=IN:en`;
+    let eventDate: Date | null = null;
+    if (date) {
+      try {
+        eventDate = new Date(date);
+      } catch {
+        eventDate = null;
+      }
+    }
 
     try {
+      // Build query for Google News RSS
+      const query = encodeURIComponent(event + " " + description);
+      const feedUrl = `https://news.google.com/rss/search?q=${query}&hl=en-IN&gl=IN&ceid=IN:en`;
+
       const feed = await parser.parseURL(feedUrl);
-      if (!feed.items?.length) return { imageUrl: null, sourceLink: null };
 
-      const filtered = feed.items.filter(
-        (i) =>
-          i.title &&
-          !i.title.toLowerCase().includes("how to watch") &&
-          !i.title.toLowerCase().includes("live stream") &&
-          !i.link?.includes("youtube.com") &&
-          !i.link?.includes("sport")
-      );
+      if (!feed.items || feed.items.length === 0) {
+        functions.logger.warn("No RSS results for query", { event, query });
+        return { imageUrl: null, sourceLink: null };
+      }
 
-      if (!filtered.length) return { imageUrl: null, sourceLink: null };
+      // --- Scoring function for relevance + date proximity
+      const scoreRelevance = (item: any, query: string): number => {
+        const text = (
+          (item.title || "") +
+          " " +
+          (item.contentSnippet || "")
+        ).toLowerCase();
+        const words = query
+          .toLowerCase()
+          .split(" ")
+          .filter((w) => w.length > 3);
+        const baseScore = words.filter((w) => text.includes(w)).length;
 
-      const scored = filtered.map((item) => ({
-        ...item,
-        score: textSimilarity(
-          (item.title || "") + " " + (item.contentSnippet || ""),
-          eventText + " " + (description || "")
-        ),
-      }));
+        // --- Temporal weighting (±2 days strong match)
+        let timeScore = 0;
+        if (eventDate && item.pubDate) {
+          const pub = new Date(item.pubDate);
+          const diffDays = Math.abs(
+            (pub.getTime() - eventDate.getTime()) / (1000 * 60 * 60 * 24)
+          );
+          if (diffDays <= 2) timeScore = 3; // strong match
+          else if (diffDays <= 5) timeScore = 1; // weak match
+        }
 
-      scored.sort((a, b) => b.score - a.score);
+        return baseScore + timeScore;
+      };
 
-      const best = scored[0];
-      const imageUrl = extractImage(best);
-      const sourceLink = best.link || null;
+      // --- Select best-matching RSS item
+      let bestItem: any = null;
+      let bestScore = 0;
 
-      return { imageUrl, sourceLink };
+      for (const item of feed.items) {
+        const score = scoreRelevance(item, event + " " + description);
+        if (score > bestScore) {
+          bestItem = item;
+          bestScore = score;
+        }
+      }
+
+      if (!bestItem) {
+        functions.logger.info("No relevant match found", { event, query });
+        return { imageUrl: null, sourceLink: null };
+      }
+
+      // --- Extract image
+      let imageUrl: string | null = null;
+      if (bestItem.enclosure?.url) {
+        imageUrl = bestItem.enclosure.url;
+      } else if (bestItem["media:content"]?.url) {
+        imageUrl = bestItem["media:content"].url;
+      } else if (bestItem.content?.includes("<img")) {
+        const match = bestItem.content.match(/<img.*?src="(.*?)"/);
+        if (match) imageUrl = match[1];
+      }
+
+      // --- Log what we found
+      functions.logger.info("✅ Coverage fetched", {
+        event,
+        query,
+        bestTitle: bestItem.title,
+        pubDate: bestItem.pubDate,
+        bestScore,
+        imageUrl,
+        sourceLink: bestItem.link,
+      });
+
+      return {
+        imageUrl,
+        sourceLink: bestItem.link || null,
+      };
     } catch (err: any) {
-      console.error("RSS fetch error:", err.message);
-      throw new HttpsError("internal", "Failed to fetch RSS coverage");
+      functions.logger.error("❌ Error fetching coverage", {
+        event,
+        message: err.message,
+      });
+      throw new functions.https.HttpsError(
+        "internal",
+        "Failed to fetch coverage: " + err.message
+      );
     }
   }
 );
