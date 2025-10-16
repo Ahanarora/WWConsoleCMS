@@ -1,22 +1,25 @@
 import * as functions from "firebase-functions/v2";
-import "./firebaseAdmin"; // initialize admin once for side-effect
-import Parser from "rss-parser";
-
-const parser = new Parser();
+import axios from "axios";
+import * as cheerio from "cheerio";
+import "./firebaseAdmin";
 
 interface FetchEventCoverageData {
   event: string;
   description?: string;
-  date?: string; // event date from Firestore
+  date?: string;
+}
+
+interface SourceItem {
+  title: string;
+  link: string;
+  sourceName: string;
+  imageUrl?: string | null;
+  pubDate?: string;
 }
 
 export const fetchEventCoverage = functions.https.onCall(
-  { region: "asia-south1" },
   async (request: functions.https.CallableRequest<FetchEventCoverageData>) => {
     const { event, description = "", date } = request.data || {};
-
-    // 🚀 Log the incoming request
-    functions.logger.info("fetchEventCoverage called", { event, description, date });
 
     if (!event) {
       throw new functions.https.HttpsError(
@@ -24,6 +27,10 @@ export const fetchEventCoverage = functions.https.onCall(
         "Event title is required."
       );
     }
+
+    // 1️⃣ Build search query
+    const query = encodeURIComponent(`${event} ${description}`);
+    const feedUrl = `https://news.google.com/rss/search?q=${query}&hl=en-IN&gl=IN&ceid=IN:en`;
 
     let eventDate: Date | null = null;
     if (date) {
@@ -35,95 +42,90 @@ export const fetchEventCoverage = functions.https.onCall(
     }
 
     try {
-      // Build query for Google News RSS
-      const query = encodeURIComponent(event + " " + description);
-      const feedUrl = `https://news.google.com/rss/search?q=${query}&hl=en-IN&gl=IN&ceid=IN:en`;
+      // 2️⃣ Fetch the RSS feed XML
+      const { data: xml } = await axios.get(feedUrl, {
+        timeout: 10000,
+      });
 
-      const feed = await parser.parseURL(feedUrl);
+      const $ = cheerio.load(xml, { xmlMode: true });
+      const items: SourceItem[] = [];
 
-      if (!feed.items || feed.items.length === 0) {
-        functions.logger.warn("No RSS results for query", { event, query });
-        return { imageUrl: null, sourceLink: null };
+      $("item").each((_, el) => {
+        const title = $(el).find("title").text().trim();
+        const link = $(el).find("link").text().trim();
+        const sourceName = $(el).find("source").text().trim() || "Unknown";
+        const pubDate = $(el).find("pubDate").text().trim();
+
+        if (title && link) {
+          items.push({ title, link, sourceName, pubDate });
+        }
+      });
+
+      if (items.length === 0) {
+        functions.logger.warn("No results found for", { event, query });
+        return { sources: [] };
       }
 
-      // --- Scoring function for relevance + date proximity
-      const scoreRelevance = (item: any, query: string): number => {
-        const text = (
-          (item.title || "") +
-          " " +
-          (item.contentSnippet || "")
-        ).toLowerCase();
-        const words = query
+      // 3️⃣ Scoring logic
+      const scoreRelevance = (item: SourceItem): number => {
+        const text = `${item.title} ${item.sourceName}`.toLowerCase();
+        const words = `${event} ${description}`
           .toLowerCase()
           .split(" ")
           .filter((w) => w.length > 3);
-        const baseScore = words.filter((w) => text.includes(w)).length;
 
-        // --- Temporal weighting (±2 days strong match)
-        let timeScore = 0;
+        let score = 0;
+        for (const w of words) if (text.includes(w)) score++;
+
+        // Temporal weighting
         if (eventDate && item.pubDate) {
           const pub = new Date(item.pubDate);
           const diffDays = Math.abs(
             (pub.getTime() - eventDate.getTime()) / (1000 * 60 * 60 * 24)
           );
-          if (diffDays <= 2) timeScore = 3; // strong match
-          else if (diffDays <= 5) timeScore = 1; // weak match
+          if (diffDays <= 2) score += 3; // strong
+          else if (diffDays <= 5) score += 1; // mild
         }
 
-        return baseScore + timeScore;
+        return score;
       };
 
-      // --- Select best-matching RSS item
-      let bestItem: any = null;
-      let bestScore = 0;
+      // 4️⃣ Rank and pick top 5
+      const ranked = items
+        .map((it) => ({ ...it, score: scoreRelevance(it) }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5);
 
-      for (const item of feed.items) {
-        const score = scoreRelevance(item, event + " " + description);
-        if (score > bestScore) {
-          bestItem = item;
-          bestScore = score;
+      // 5️⃣ Attempt to extract OpenGraph image for each link
+      for (const item of ranked) {
+        try {
+          const { data: html } = await axios.get(item.link, { timeout: 8000 });
+          const $page = cheerio.load(html);
+          const ogImage =
+            $page('meta[property="og:image"]').attr("content") ||
+            $page('meta[name="twitter:image"]').attr("content");
+          if (ogImage) item.imageUrl = ogImage;
+        } catch (err) {
+          functions.logger.warn("Failed to fetch image for", item.link);
+          item.imageUrl = null;
         }
       }
 
-      if (!bestItem) {
-        functions.logger.info("No relevant match found", { event, query });
-        return { imageUrl: null, sourceLink: null };
-      }
-
-      // --- Extract image
-      let imageUrl: string | null = null;
-      if (bestItem.enclosure?.url) {
-        imageUrl = bestItem.enclosure.url;
-      } else if (bestItem["media:content"]?.url) {
-        imageUrl = bestItem["media:content"].url;
-      } else if (bestItem.content?.includes("<img")) {
-        const match = bestItem.content.match(/<img.*?src="(.*?)"/);
-        if (match) imageUrl = match[1];
-      }
-
-      // --- Log what we found
-      functions.logger.info("✅ Coverage fetched", {
+      // 6️⃣ Return
+      functions.logger.info("✅ Fetched coverage", {
         event,
-        query,
-        bestTitle: bestItem.title,
-        pubDate: bestItem.pubDate,
-        bestScore,
-        imageUrl,
-        sourceLink: bestItem.link,
+        sources: ranked.length,
       });
 
-      return {
-        imageUrl,
-        sourceLink: bestItem.link || null,
-      };
+      return { sources: ranked };
     } catch (err: any) {
-      functions.logger.error("❌ Error fetching coverage", {
+      functions.logger.error("❌ Coverage fetch error", {
         event,
         message: err.message,
       });
       throw new functions.https.HttpsError(
         "internal",
-        "Failed to fetch coverage: " + err.message
+        "Failed to fetch event coverage: " + err.message
       );
     }
   }

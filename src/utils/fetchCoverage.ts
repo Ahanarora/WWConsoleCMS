@@ -1,13 +1,19 @@
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { app } from "../firebase";
 
-// If you deployed without specifying a region, the default is "us-central1".
-// If you explicitly deployed to asia-south1, change the second arg here to "asia-south1".
-const functions = getFunctions(app, "us-central1");
+const functions = getFunctions(app);
+
+interface SourceItem {
+  title: string;
+  link: string;
+  imageUrl: string | null;
+  sourceName: string;
+  pubDate?: string;
+  score?: number;
+}
 
 interface FetchEventCoverageResponse {
-  imageUrl: string | null;
-  sourceLink: string | null;
+  sources: SourceItem[];
 }
 
 export async function fetchEventCoverage(
@@ -16,17 +22,11 @@ export async function fetchEventCoverage(
   date?: string
 ): Promise<FetchEventCoverageResponse> {
   try {
-    const callable = httpsCallable<
-      { event: string; description?: string; date?: string },
-      FetchEventCoverageResponse
-    >(functions, "fetchEventCoverage");
-
+    const callable = httpsCallable(functions, "fetchEventCoverage");
     const result = await callable({ event, description, date });
-    // Helpful debug:
-    console.log("[fetchEventCoverage] result:", result.data);
-    return result.data;
+    return result.data as FetchEventCoverageResponse;
   } catch (error: any) {
     console.error("Error calling fetchEventCoverage:", error);
-    throw new Error(error?.message || "Failed to fetch event coverage");
+    throw new Error(error.message || "Failed to fetch event coverage");
   }
 }

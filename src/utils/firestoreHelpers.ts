@@ -19,14 +19,32 @@ import {
 // ---------------------------
 
 // Each timeline event in a draft
+export interface SourceItem {
+  title: string;
+  link: string;
+  imageUrl: string | null;
+  sourceName: string;
+  pubDate?: string;
+  score?: number;
+}
+
 export interface TimelineEvent {
   date: string;
   event: string;
   description: string;
-  significance: number; // 1–3
+  significance: number;
   imageUrl?: string;
   sourceLink?: string;
+  sources?: {
+    title: string;
+    link: string;
+    sourceName: string;
+    imageUrl?: string;
+  }[];
 }
+
+
+
 
 // Analysis structure (3 collapsible tabs)
 export interface AnalysisSection {

@@ -13,7 +13,7 @@ import {
 } from "../utils/firestoreHelpers";
 import type { Draft, TimelineEvent, AnalysisSection } from "../utils/firestoreHelpers";
 import { generateTimeline, generateAnalysis } from "../utils/gptHelpers";
-import { fetchEventCoverage } from "../utils/fetchCoverage"; // ✅ new import
+import { fetchEventCoverage } from "../utils/fetchCoverage";
 
 export default function EditDraft() {
   const { id } = useParams<{ id: string }>();
@@ -23,15 +23,11 @@ export default function EditDraft() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Collapse toggles
   const [showTimeline, setShowTimeline] = useState(true);
   const [showAnalysis, setShowAnalysis] = useState(true);
-
-  // GPT loading
   const [loadingTimeline, setLoadingTimeline] = useState(false);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
 
-  // Temp state for new timeline event
   const [newEvent, setNewEvent] = useState<Partial<TimelineEvent>>({
     date: "",
     event: "",
@@ -41,7 +37,7 @@ export default function EditDraft() {
     sourceLink: "",
   });
 
-  // Load draft from Firestore
+  // Load draft
   useEffect(() => {
     const load = async () => {
       try {
@@ -73,18 +69,7 @@ export default function EditDraft() {
     if (!draft || !id) return;
     try {
       setSaving(true);
-      await updateDraft(id, {
-        title: draft.title,
-        overview: draft.overview,
-        category: draft.category,
-        subcategory: draft.subcategory,
-        tags: draft.tags,
-        imageUrl: draft.imageUrl,
-        sources: draft.sources,
-        status: draft.status,
-        slug: draft.slug,
-        editorNotes: draft.editorNotes,
-      });
+      await updateDraft(id, draft);
       alert("✅ Metadata saved");
     } catch (err) {
       console.error(err);
@@ -248,75 +233,21 @@ export default function EditDraft() {
       <div className="bg-white p-6 rounded-lg shadow space-y-4">
         <h2 className="text-xl font-semibold mb-4">Metadata</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input
-            name="title"
-            value={draft.title}
-            onChange={handleMetadataChange}
-            placeholder="Title"
-            className="border p-2 rounded"
-          />
-          <input
-            name="category"
-            value={draft.category}
-            onChange={handleMetadataChange}
-            placeholder="Category"
-            className="border p-2 rounded"
-          />
-          <input
-            name="subcategory"
-            value={draft.subcategory}
-            onChange={handleMetadataChange}
-            placeholder="Subcategory"
-            className="border p-2 rounded"
-          />
-          <input
-            name="imageUrl"
-            value={draft.imageUrl}
-            onChange={handleMetadataChange}
-            placeholder="Main Image URL"
-            className="border p-2 rounded"
-          />
-          <textarea
-            name="overview"
-            value={draft.overview}
-            onChange={handleMetadataChange}
-            placeholder="Overview"
-            rows={3}
-            className="border p-2 rounded md:col-span-2"
-          />
-
-          <select
-            name="status"
-            value={draft.status}
-            onChange={handleMetadataChange}
-            className="border p-2 rounded"
-          >
+          <input name="title" value={draft.title} onChange={handleMetadataChange} placeholder="Title" className="border p-2 rounded" />
+          <input name="category" value={draft.category} onChange={handleMetadataChange} placeholder="Category" className="border p-2 rounded" />
+          <input name="subcategory" value={draft.subcategory} onChange={handleMetadataChange} placeholder="Subcategory" className="border p-2 rounded" />
+          <input name="imageUrl" value={draft.imageUrl} onChange={handleMetadataChange} placeholder="Main Image URL" className="border p-2 rounded" />
+          <textarea name="overview" value={draft.overview} onChange={handleMetadataChange} placeholder="Overview" rows={3} className="border p-2 rounded md:col-span-2" />
+          <select name="status" value={draft.status} onChange={handleMetadataChange} className="border p-2 rounded">
             <option value="draft">Draft</option>
             <option value="review">In Review</option>
             <option value="published">Published</option>
           </select>
-          <input
-            name="slug"
-            value={draft.slug}
-            onChange={handleMetadataChange}
-            placeholder="Slug"
-            className="border p-2 rounded"
-          />
-          <textarea
-            name="editorNotes"
-            value={draft.editorNotes || ""}
-            onChange={handleMetadataChange}
-            placeholder="Editor Notes"
-            rows={2}
-            className="border p-2 rounded md:col-span-2"
-          />
+          <input name="slug" value={draft.slug} onChange={handleMetadataChange} placeholder="Slug" className="border p-2 rounded" />
+          <textarea name="editorNotes" value={draft.editorNotes || ""} onChange={handleMetadataChange} placeholder="Editor Notes" rows={2} className="border p-2 rounded md:col-span-2" />
         </div>
 
-        <button
-          onClick={saveMetadata}
-          disabled={saving}
-          className="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-        >
+        <button onClick={saveMetadata} disabled={saving} className="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
           {saving ? "Saving..." : "Save Metadata"}
         </button>
       </div>
@@ -326,17 +257,10 @@ export default function EditDraft() {
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-semibold">Chronology of Events</h2>
           <div className="flex gap-3 items-center">
-            <button
-              onClick={handleGenerateTimeline}
-              disabled={loadingTimeline}
-              className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-            >
+            <button onClick={handleGenerateTimeline} disabled={loadingTimeline} className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
               {loadingTimeline ? "Generating…" : "🧠 Generate Timeline"}
             </button>
-            <button
-              onClick={() => setShowTimeline(!showTimeline)}
-              className="text-sm text-blue-600 hover:underline"
-            >
+            <button onClick={() => setShowTimeline(!showTimeline)} className="text-sm text-blue-600 hover:underline">
               {showTimeline ? "Hide" : "Show"}
             </button>
           </div>
@@ -351,62 +275,16 @@ export default function EditDraft() {
                 {draft.timeline.map((ev, i) => (
                   <div key={i} className="border p-3 rounded">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
-                      <input
-                        value={ev.date}
-                        onChange={(e) =>
-                          handleUpdateEvent(i, "date", e.target.value)
-                        }
-                        placeholder="Date"
-                        className="border p-2 rounded"
-                      />
-                      <input
-                        value={ev.event}
-                        onChange={(e) =>
-                          handleUpdateEvent(i, "event", e.target.value)
-                        }
-                        placeholder="Event"
-                        className="border p-2 rounded"
-                      />
-                      <input
-                        value={ev.imageUrl || ""}
-                        onChange={(e) =>
-                          handleUpdateEvent(i, "imageUrl", e.target.value)
-                        }
-                        placeholder="Image URL"
-                        className="border p-2 rounded"
-                      />
-                      <input
-                        value={ev.sourceLink || ""}
-                        onChange={(e) =>
-                          handleUpdateEvent(i, "sourceLink", e.target.value)
-                        }
-                        placeholder="Source Link"
-                        className="border p-2 rounded"
-                      />
+                      <input value={ev.date} onChange={(e) => handleUpdateEvent(i, "date", e.target.value)} placeholder="Date" className="border p-2 rounded" />
+                      <input value={ev.event} onChange={(e) => handleUpdateEvent(i, "event", e.target.value)} placeholder="Event" className="border p-2 rounded" />
+                      <input value={ev.imageUrl || ""} onChange={(e) => handleUpdateEvent(i, "imageUrl", e.target.value)} placeholder="Image URL" className="border p-2 rounded" />
+                      <input value={ev.sourceLink || ""} onChange={(e) => handleUpdateEvent(i, "sourceLink", e.target.value)} placeholder="Source Link" className="border p-2 rounded" />
                     </div>
-                    <textarea
-                      value={ev.description}
-                      onChange={(e) =>
-                        handleUpdateEvent(i, "description", e.target.value)
-                      }
-                      placeholder="Description"
-                      rows={2}
-                      className="border p-2 rounded w-full mb-2"
-                    />
-                    <label className="block text-sm text-gray-600 mb-1">
-                      Importance
-                    </label>
-                    <select
-                      value={ev.significance}
-                      onChange={(e) =>
-                        handleUpdateEvent(
-                          i,
-                          "significance",
-                          Number(e.target.value)
-                        )
-                      }
-                      className="border p-2 rounded mb-2"
-                    >
+
+                    <textarea value={ev.description} onChange={(e) => handleUpdateEvent(i, "description", e.target.value)} placeholder="Description" rows={2} className="border p-2 rounded w-full mb-2" />
+
+                    <label className="block text-sm text-gray-600 mb-1">Importance</label>
+                    <select value={ev.significance} onChange={(e) => handleUpdateEvent(i, "significance", Number(e.target.value))} className="border p-2 rounded mb-2">
                       <option value={1}>Low</option>
                       <option value={2}>Medium</option>
                       <option value={3}>High</option>
@@ -414,105 +292,65 @@ export default function EditDraft() {
 
                     {/* Buttons */}
                     <div className="flex gap-4 items-center mt-2">
+                      <button onClick={() => handleDeleteEvent(i)} className="text-red-600 text-sm hover:underline">Delete</button>
                       <button
-                        onClick={() => handleDeleteEvent(i)}
-                        className="text-red-600 text-sm hover:underline"
+                        onClick={async () => {
+                          try {
+                            const result = await fetchEventCoverage(ev.event, ev.description, ev.date);
+                            if (result.sources && result.sources.length > 0) {
+                              await handleUpdateEvent(i, "sources", result.sources);
+                              if (result.sources[0].imageUrl) {
+                                await handleUpdateEvent(i, "imageUrl", result.sources[0].imageUrl);
+                              }
+                              alert(`✅ Added ${result.sources.length} sources for "${ev.event}"`);
+                            } else {
+                              alert("⚠️ No relevant sources found for this event");
+                            }
+                          } catch (e: any) {
+                            console.error(e);
+                            alert("❌ Failed to fetch top sources: " + e.message);
+                          }
+                        }}
+                        className="text-blue-600 text-sm hover:underline"
                       >
-                        Delete
+                        🔗 Fetch Top 5 Sources
                       </button>
-      <button
-  onClick={async () => {
-    try {
-      const res = await fetchEventCoverage(ev.event, ev.description, ev.date);
-
-      console.log("[UI] coverage response:", res);
-
-      if (!res?.imageUrl && !res?.sourceLink) {
-        alert("No highly relevant coverage found for this event.");
-        return;
-      }
-
-      // 1) Update local state immediately for fast UI feedback
-      const updatedTimeline = [...draft.timeline];
-      updatedTimeline[i] = {
-        ...updatedTimeline[i],
-        imageUrl: res.imageUrl || updatedTimeline[i].imageUrl,
-        sourceLink: res.sourceLink || updatedTimeline[i].sourceLink,
-      };
-      setDraft({ ...draft, timeline: updatedTimeline });
-
-      // 2) Persist to Firestore (use your existing helper)
-      if (res.sourceLink) {
-        await handleUpdateEvent(i, "sourceLink", res.sourceLink);
-      }
-      if (res.imageUrl) {
-        await handleUpdateEvent(i, "imageUrl", res.imageUrl);
-      }
-
-      alert("✅ Coverage updated for this event!");
-    } catch (e: any) {
-      console.error(e);
-      alert("❌ Failed to fetch coverage: " + (e?.message || "Unknown error"));
-    }
-  }}
-  className="text-blue-600 text-sm hover:underline"
->
-  🔍 Fetch Coverage
-</button>
-
                     </div>
+
+                    {/* Show Top Sources */}
+                    {ev.sources && ev.sources.length > 0 && (
+                      <div className="mt-3 border-t pt-2">
+                        <h4 className="text-sm font-semibold mb-1">Top Sources:</h4>
+                        <ul className="list-disc ml-4 space-y-1">
+                          {ev.sources.map((s: any, idx: number) => (
+                            <li key={idx}>
+                              <a href={s.link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                                {s.title} <span className="text-gray-500 text-xs">({s.sourceName})</span>
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             )}
 
+            {/* Add Event */}
             <div className="border-t pt-3 mt-3">
               <h3 className="text-md font-semibold mb-2">Add Event</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
-                <input
-                  value={newEvent.date}
-                  onChange={(e) =>
-                    setNewEvent({ ...newEvent, date: e.target.value })
-                  }
-                  placeholder="Date"
-                  className="border p-2 rounded"
-                />
-                <input
-                  value={newEvent.event}
-                  onChange={(e) =>
-                    setNewEvent({ ...newEvent, event: e.target.value })
-                  }
-                  placeholder="Event"
-                  className="border p-2 rounded"
-                />
+                <input value={newEvent.date} onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })} placeholder="Date" className="border p-2 rounded" />
+                <input value={newEvent.event} onChange={(e) => setNewEvent({ ...newEvent, event: e.target.value })} placeholder="Event" className="border p-2 rounded" />
               </div>
-              <textarea
-                value={newEvent.description}
-                onChange={(e) =>
-                  setNewEvent({ ...newEvent, description: e.target.value })
-                }
-                placeholder="Description"
-                rows={2}
-                className="border p-2 rounded w-full mb-2"
-              />
-              <select
-                value={newEvent.significance}
-                onChange={(e) =>
-                  setNewEvent({
-                    ...newEvent,
-                    significance: Number(e.target.value),
-                  })
-                }
-                className="border p-2 rounded mb-2"
-              >
+              <textarea value={newEvent.description} onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })} placeholder="Description" rows={2} className="border p-2 rounded w-full mb-2" />
+              <select value={newEvent.significance} onChange={(e) => setNewEvent({ ...newEvent, significance: Number(e.target.value) })} className="border p-2 rounded mb-2">
                 <option value={1}>Low</option>
                 <option value={2}>Medium</option>
                 <option value={3}>High</option>
               </select>
-              <button
-                onClick={handleAddEvent}
-                className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-              >
+              <button onClick={handleAddEvent} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
                 Add Event
               </button>
             </div>
@@ -525,17 +363,10 @@ export default function EditDraft() {
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-semibold">Analysis Sections</h2>
           <div className="flex gap-3 items-center">
-            <button
-              onClick={handleGenerateAnalysis}
-              disabled={loadingAnalysis}
-              className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
-            >
+            <button onClick={handleGenerateAnalysis} disabled={loadingAnalysis} className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50">
               {loadingAnalysis ? "Generating…" : "🤖 Generate Analysis"}
             </button>
-            <button
-              onClick={() => setShowAnalysis(!showAnalysis)}
-              className="text-sm text-blue-600 hover:underline"
-            >
+            <button onClick={() => setShowAnalysis(!showAnalysis)} className="text-sm text-blue-600 hover:underline">
               {showAnalysis ? "Hide" : "Show"}
             </button>
           </div>
@@ -548,48 +379,12 @@ export default function EditDraft() {
               <h3 className="text-lg font-semibold mb-2">Stakeholders</h3>
               {draft.analysis.stakeholders.map((s, i) => (
                 <div key={i} className="border p-3 rounded mb-2">
-                  <input
-                    value={s.name}
-                    onChange={(e) =>
-                      handleAnalysisChange(
-                        "stakeholders",
-                        i,
-                        "name",
-                        e.target.value
-                      )
-                    }
-                    placeholder="Name"
-                    className="border p-2 rounded w-full mb-2"
-                  />
-                  <textarea
-                    value={s.detail}
-                    onChange={(e) =>
-                      handleAnalysisChange(
-                        "stakeholders",
-                        i,
-                        "detail",
-                        e.target.value
-                      )
-                    }
-                    placeholder="Details"
-                    className="border p-2 rounded w-full"
-                  />
-                  <button
-                    onClick={() =>
-                      handleDeleteAnalysisItem("stakeholders", i)
-                    }
-                    className="text-red-600 text-sm hover:underline mt-2"
-                  >
-                    Delete
-                  </button>
+                  <input value={s.name} onChange={(e) => handleAnalysisChange("stakeholders", i, "name", e.target.value)} placeholder="Name" className="border p-2 rounded w-full mb-2" />
+                  <textarea value={s.detail} onChange={(e) => handleAnalysisChange("stakeholders", i, "detail", e.target.value)} placeholder="Details" className="border p-2 rounded w-full" />
+                  <button onClick={() => handleDeleteAnalysisItem("stakeholders", i)} className="text-red-600 text-sm hover:underline mt-2">Delete</button>
                 </div>
               ))}
-              <button
-                onClick={() => handleAddAnalysisItem("stakeholders")}
-                className="text-blue-600 text-sm hover:underline"
-              >
-                + Add Stakeholder
-              </button>
+              <button onClick={() => handleAddAnalysisItem("stakeholders")} className="text-blue-600 text-sm hover:underline">+ Add Stakeholder</button>
             </div>
 
             {/* FAQs */}
@@ -597,36 +392,12 @@ export default function EditDraft() {
               <h3 className="text-lg font-semibold mb-2">FAQs</h3>
               {draft.analysis.faqs.map((f, i) => (
                 <div key={i} className="border p-3 rounded mb-2">
-                  <input
-                    value={f.question}
-                    onChange={(e) =>
-                      handleAnalysisChange("faqs", i, "question", e.target.value)
-                    }
-                    placeholder="Question"
-                    className="border p-2 rounded w-full mb-2"
-                  />
-                  <textarea
-                    value={f.answer}
-                    onChange={(e) =>
-                      handleAnalysisChange("faqs", i, "answer", e.target.value)
-                    }
-                    placeholder="Answer"
-                    className="border p-2 rounded w-full"
-                  />
-                  <button
-                    onClick={() => handleDeleteAnalysisItem("faqs", i)}
-                    className="text-red-600 text-sm hover:underline mt-2"
-                  >
-                    Delete
-                  </button>
+                  <input value={f.question} onChange={(e) => handleAnalysisChange("faqs", i, "question", e.target.value)} placeholder="Question" className="border p-2 rounded w-full mb-2" />
+                  <textarea value={f.answer} onChange={(e) => handleAnalysisChange("faqs", i, "answer", e.target.value)} placeholder="Answer" className="border p-2 rounded w-full" />
+                  <button onClick={() => handleDeleteAnalysisItem("faqs", i)} className="text-red-600 text-sm hover:underline mt-2">Delete</button>
                 </div>
               ))}
-              <button
-                onClick={() => handleAddAnalysisItem("faqs")}
-                className="text-blue-600 text-sm hover:underline"
-              >
-                + Add FAQ
-              </button>
+              <button onClick={() => handleAddAnalysisItem("faqs")} className="text-blue-600 text-sm hover:underline">+ Add FAQ</button>
             </div>
 
             {/* Future Outlook */}
@@ -634,47 +405,20 @@ export default function EditDraft() {
               <h3 className="text-lg font-semibold mb-2">Future Outlook</h3>
               {draft.analysis.future.map((q, i) => (
                 <div key={i} className="border p-3 rounded mb-2">
-                  <input
-                    value={q.question}
-                    onChange={(e) =>
-                      handleAnalysisChange("future", i, "question", e.target.value)
-                    }
-                    placeholder="Question"
-                    className="border p-2 rounded w-full mb-2"
-                  />
-                  <textarea
-                    value={q.answer}
-                    onChange={(e) =>
-                      handleAnalysisChange("future", i, "answer", e.target.value)
-                    }
-                    placeholder="Answer"
-                    className="border p-2 rounded w-full"
-                  />
-                  <button
-                    onClick={() => handleDeleteAnalysisItem("future", i)}
-                    className="text-red-600 text-sm hover:underline mt-2"
-                  >
-                    Delete
-                  </button>
+                  <input value={q.question} onChange={(e) => handleAnalysisChange("future", i, "question", e.target.value)} placeholder="Question" className="border p-2 rounded w-full mb-2" />
+                  <textarea value={q.answer} onChange={(e) => handleAnalysisChange("future", i, "answer", e.target.value)} placeholder="Answer" className="border p-2 rounded w-full" />
+                  <button onClick={() => handleDeleteAnalysisItem("future", i)} className="text-red-600 text-sm hover:underline mt-2">Delete</button>
                 </div>
               ))}
-              <button
-                onClick={() => handleAddAnalysisItem("future")}
-                className="text-blue-600 text-sm hover:underline"
-              >
-                + Add Future Question
-              </button>
+              <button onClick={() => handleAddAnalysisItem("future")} className="text-blue-600 text-sm hover:underline">+ Add Future Question</button>
             </div>
 
-            <button
-              onClick={saveAnalysis}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-            >
+            <button onClick={saveAnalysis} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
               Save Analysis
             </button>
           </div>
         )}
       </div>
-    </div>
+      </div>
   );
 }
