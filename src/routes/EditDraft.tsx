@@ -318,20 +318,46 @@ export default function EditDraft() {
                     </div>
 
                     {/* Show Top Sources */}
-                    {ev.sources && ev.sources.length > 0 && (
-                      <div className="mt-3 border-t pt-2">
-                        <h4 className="text-sm font-semibold mb-1">Top Sources:</h4>
-                        <ul className="list-disc ml-4 space-y-1">
-                          {ev.sources.map((s: any, idx: number) => (
-                            <li key={idx}>
-                              <a href={s.link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                                {s.title} <span className="text-gray-500 text-xs">({s.sourceName})</span>
-                              </a>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
+                    {/* Show Top Sources */}
+{ev.sources && ev.sources.length > 0 && (
+  <div className="mt-3 border-t pt-2">
+    <h4 className="text-sm font-semibold mb-2">Top Sources:</h4>
+    <div className="space-y-2">
+      {ev.sources.map((s: any, idx: number) => (
+        <div
+          key={idx}
+          className="flex items-center space-x-3 border p-2 rounded-md hover:bg-gray-50"
+        >
+          {/* Thumbnail */}
+          {s.imageUrl && (
+            <img
+              src={s.imageUrl}
+              alt={s.title}
+              className="w-10 h-10 object-cover rounded"
+              onError={(e) => {
+                // fallback if image fails to load
+                e.currentTarget.src = `${new URL(s.link).origin}/favicon.ico`;
+              }}
+            />
+          )}
+          {/* Text content */}
+          <div className="flex flex-col">
+            <a
+              href={s.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 font-medium hover:underline"
+            >
+              {s.title}
+            </a>
+            <span className="text-gray-500 text-xs">{s.sourceName}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
+
                   </div>
                 ))}
               </div>
