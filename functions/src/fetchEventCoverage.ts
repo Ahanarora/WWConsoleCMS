@@ -68,7 +68,16 @@ export const fetchEventCoverage = functions.https.onCall(
 
       $("item").each((_, el) => {
         const title = $(el).find("title").text().trim();
-        const link = $(el).find("link").text().trim();
+        let link = $(el).find("link").text().trim();
+
+// 🧠 Fix Google News redirect links
+if (link.startsWith("https://news.google.com/")) {
+  const match = link.match(/url=(.*)&/);
+  if (match && match[1]) {
+    link = decodeURIComponent(match[1]);
+  }
+}
+
         const sourceName = $(el).find("source").text().trim() || "Unknown";
         const pubDate = $(el).find("pubDate").text().trim();
         if (title && link) items.push({ title, link, sourceName, pubDate });
@@ -122,29 +131,38 @@ export const fetchEventCoverage = functions.https.onCall(
       });
 
       // 🖼️ Step 5 — Fetch images
-      for (const item of ranked) {
-        try {
-          const { data: html } = await axios.get(item.link, { timeout: 8000 });
-          const $page = cheerio.load(html);
-          const ogImage =
-            $page('meta[property="og:image"]').attr("content") ||
-            $page('meta[name="twitter:image"]').attr("content");
+     for (const item of ranked) {
+  try {
+    // 🧭 Step 1 — Let Axios follow the redirect itself
+    const response = await axios.get(item.link, {
+      maxRedirects: 5,
+      timeout: 10000,
+      validateStatus: (status) => status < 400, // only treat real errors as errors
+    });
 
-          if (ogImage) {
-            item.imageUrl = ogImage;
-            // ✅ DEBUG LOG #5 — image found
-            functions.logger.info("🖼️ Image found for", {
-              title: item.title,
-              imageUrl: item.imageUrl,
-            });
-          } else {
-            item.imageUrl = null;
-          }
-        } catch {
-          functions.logger.warn("⚠️ Failed to fetch image for", item.link);
-          item.imageUrl = null;
-        }
-      }
+    // 🧠 Step 2 — capture the final resolved URL (Axios keeps it here)
+    const finalUrl = response.request?.res?.responseUrl || item.link;
+
+    // 🖼️ Step 3 — parse HTML for OpenGraph image
+    const $page = cheerio.load(response.data);
+    const ogImage =
+      $page('meta[property="og:image"]').attr("content") ||
+      $page('meta[name="twitter:image"]').attr("content");
+
+    // 🧩 Step 4 — save best image or fallback to site icon
+    item.imageUrl = ogImage || `${new URL(finalUrl).origin}/favicon.ico`;
+
+    functions.logger.info("🖼️ Image resolved for", {
+      title: item.title,
+      finalUrl,
+      imageUrl: item.imageUrl,
+    });
+  } catch (err) {
+    item.imageUrl = `${new URL(item.link).origin}/favicon.ico`;
+    functions.logger.warn("⚠️ Failed to fetch image for", item.link);
+  }
+}
+
 
       // ✅ DEBUG LOG #6 — Final summary
       functions.logger.info("📦 Returning fetched sources", {
