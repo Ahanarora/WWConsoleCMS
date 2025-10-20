@@ -65,6 +65,8 @@ export interface Draft {
   sources: string[];
   timeline: TimelineEvent[];
   analysis: AnalysisSection;
+  keywords?: string[];
+
 
   // 🆕 New fields for workflow and publishing
   status?: "draft" | "review" | "published";
