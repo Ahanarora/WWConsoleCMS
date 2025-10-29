@@ -1,5 +1,5 @@
 // ----------------------------------------
-// src/routes/Drafts.tsx
+// src/routes/DraftsStories.tsx
 // ----------------------------------------
 
 import React, { useEffect, useState } from "react";
@@ -7,27 +7,41 @@ import { useNavigate } from "react-router-dom";
 import { createDraft, fetchDrafts, deleteDraft } from "../utils/firestoreHelpers";
 import type { Draft } from "../utils/firestoreHelpers";
 
-export default function Drafts() {
+export default function DraftsStories() {
   const navigate = useNavigate();
-
-  // Local state
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Form inputs for new draft
   const [form, setForm] = useState({
     title: "",
     overview: "",
+    type: "Story", // 🔹 internal type of draft
     category: "",
     subcategory: "",
+    date: "",
+    imageUrl: "",
   });
 
-  // Load all drafts
+  const categories = [
+    "Politics",
+    "Economy",
+    "Environment",
+    "Science & Tech",
+    "Health",
+    "World",
+    "Culture",
+    "Sports",
+    "Other",
+  ];
+
+  // ----------------------------
+  // LOAD DRAFTS
+  // ----------------------------
   useEffect(() => {
     const load = async () => {
       try {
-        const data = await fetchDrafts();
+        const data = (await fetchDrafts()).filter((d) => d.type === "Story");
         setDrafts(data);
       } catch (err) {
         console.error("Error loading drafts:", err);
@@ -38,49 +52,54 @@ export default function Drafts() {
     load();
   }, []);
 
-  // Handle input changes
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  // ----------------------------
+  // FORM HANDLERS
+  // ----------------------------
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => {
     const { name, value } = e.target;
     setForm({ ...form, [name]: value });
   };
 
-  // Create new draft
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.title.trim()) {
-      alert("Title is required");
+    if (!form.title.trim() || !form.category.trim()) {
+      alert("Title and Category are required");
       return;
     }
 
     try {
       setSaving(true);
-
-      // ✅ Matches the current Draft schema (status literal typed)
       const id = await createDraft({
         title: form.title,
         overview: form.overview,
-        category: form.category,
+        category: form.category, // real news category
         subcategory: form.subcategory,
         tags: [],
-        imageUrl: "",
+        imageUrl: form.imageUrl,
         sources: [],
         timeline: [],
         analysis: { stakeholders: [], faqs: [], future: [] },
         status: "draft",
-        slug: form.title
-          ? form.title.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, "")
-          : "",
+        slug: form.title.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, ""),
         editorNotes: "",
+        updatedAt: new Date(),
+        type: "Story", // custom internal field to separate theme/story
       });
 
-      // Refresh drafts list
-      const updated = await fetchDrafts();
-      setDrafts(updated);
+      const data = (await fetchDrafts()).filter((d) => d.type === "Story");
+      setDrafts(data);
+      setForm({
+        title: "",
+        overview: "",
+        type: "Story",
+        category: "",
+        subcategory: "",
+        date: "",
+        imageUrl: "",
+      });
 
-      // Clear form
-      setForm({ title: "", overview: "", category: "", subcategory: "" });
-
-      // Navigate directly to Edit screen for this draft
       navigate(`/drafts/${id}`);
     } catch (err) {
       console.error("Error creating draft:", err);
@@ -90,7 +109,6 @@ export default function Drafts() {
     }
   };
 
-  // Delete draft
   const handleDelete = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this draft?")) return;
     try {
@@ -102,22 +120,20 @@ export default function Drafts() {
     }
   };
 
-  // Render loading state
+  // ----------------------------
+  // RENDER
+  // ----------------------------
   if (loading) return <div className="p-6">Loading drafts...</div>;
 
-  // ----------------------------------------
-  // ✅ UI
-  // ----------------------------------------
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-8">
-      {/* Header */}
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Drafts</h1>
+        <h1 className="text-3xl font-bold">Story Drafts</h1>
       </div>
 
-      {/* CREATE NEW DRAFT FORM */}
+      {/* CREATE NEW DRAFT */}
       <div className="bg-white p-6 rounded-lg shadow">
-        <h2 className="text-xl font-semibold mb-4">Create New Draft</h2>
+        <h2 className="text-xl font-semibold mb-4">Create New Story Draft</h2>
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <input
             name="title"
@@ -126,20 +142,46 @@ export default function Drafts() {
             onChange={handleChange}
             className="border p-2 rounded"
           />
-          <input
+
+          {/* CATEGORY DROPDOWN */}
+          <select
             name="category"
-            placeholder="Category"
             value={form.category}
             onChange={handleChange}
             className="border p-2 rounded"
-          />
+          >
+            <option value="">Select Category</option>
+            {categories.map((cat) => (
+              <option key={cat} value={cat}>
+                {cat}
+              </option>
+            ))}
+          </select>
+
           <input
             name="subcategory"
-            placeholder="Subcategory"
+            placeholder="Subcategory (e.g. Geopolitical Conflict)"
             value={form.subcategory}
             onChange={handleChange}
             className="border p-2 rounded"
           />
+
+          <input
+            name="date"
+            placeholder="Date (optional)"
+            value={form.date}
+            onChange={handleChange}
+            className="border p-2 rounded"
+          />
+
+          <input
+            name="imageUrl"
+            placeholder="Image URL (optional)"
+            value={form.imageUrl}
+            onChange={handleChange}
+            className="border p-2 rounded md:col-span-2"
+          />
+
           <textarea
             name="overview"
             placeholder="Overview"
@@ -148,33 +190,30 @@ export default function Drafts() {
             rows={3}
             className="border p-2 rounded md:col-span-2"
           />
+
           <button
             type="submit"
             disabled={saving}
             className="bg-blue-600 text-white py-2 px-4 rounded md:col-span-2 hover:bg-blue-700"
           >
-            {saving ? "Saving..." : "Create Draft"}
+            {saving ? "Saving..." : "Create Story Draft"}
           </button>
         </form>
       </div>
 
-      {/* LIST OF DRAFTS */}
+      {/* EXISTING DRAFTS LIST */}
       <div className="bg-white p-6 rounded-lg shadow">
-        <h2 className="text-xl font-semibold mb-4">Existing Drafts</h2>
-
+        <h2 className="text-xl font-semibold mb-4">Existing Story Drafts</h2>
         {drafts.length === 0 ? (
-          <p className="text-gray-500">No drafts yet.</p>
+          <p className="text-gray-500">No story drafts yet.</p>
         ) : (
           <ul className="divide-y">
             {drafts.map((draft) => (
-              <li
-                key={draft.id}
-                className="py-3 flex justify-between items-center hover:bg-gray-50 rounded-md px-2"
-              >
+              <li key={draft.id} className="py-3 flex justify-between items-center">
                 <div>
                   <p className="font-medium">{draft.title || "Untitled"}</p>
                   <p className="text-sm text-gray-500">
-                    {draft.category} • {draft.status}
+                    {draft.category} • {draft.subcategory || "—"} • {draft.status}
                   </p>
                 </div>
                 <div className="space-x-2">

@@ -54,6 +54,7 @@ export interface AnalysisSection {
 // ✅ Main Draft schema (finalized)
 export interface Draft {
   id?: string;
+    type?: "Theme" | "Story"; // 🆕 differentiates between draft kinds
   title: string;
   overview: string;
   category: string;
@@ -81,6 +82,7 @@ export interface Draft {
 export const createDraft = async (data: Partial<Draft>) => {
   const defaultDraft: Draft = {
     title: data.title || "",
+    type: data.type || "Theme",
     overview: data.overview || "",
     category: data.category || "",
     subcategory: data.subcategory || "",
@@ -222,4 +224,26 @@ export const publishDraft = async (id: string) => {
   await updateDoc(draftRef, { status: "published", updatedAt: serverTimestamp() });
 
   console.log(`✅ Draft ${id} published as theme "${slug}"`);
+};
+
+export const publishStory = async (id: string) => {
+  const draftRef = doc(db, "drafts", id);
+  const snap = await getDoc(draftRef);
+  if (!snap.exists()) throw new Error("Draft not found");
+
+  const draft = snap.data() as Draft;
+  const slug = draft.slug || draft.title.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, "");
+
+  const storyRef = doc(db, "stories", slug);
+  await setDoc(storyRef, {
+    title: draft.title,
+    overview: draft.overview,
+    category: draft.category,
+    timeline: draft.timeline || [],
+    analysis: draft.analysis || {},
+    publishedAt: serverTimestamp(),
+    status: "published",
+  });
+
+  await updateDoc(draftRef, { status: "published" });
 };

@@ -1,48 +1,66 @@
-import { Link, Outlet, useLocation } from "react-router-dom";
+// ----------------------------------------
+// src/routes/Layout.tsx
+// ----------------------------------------
+
+import React from "react";
+import { NavLink, Outlet } from "react-router-dom";
 
 export default function Layout() {
-  const location = useLocation();
-
   const navItems = [
-    { label: "Dashboard", path: "/" },
-    { label: "Drafts", path: "/drafts" },
-    { label: "Users", path: "/users" },
+    { label: "🏠 Dashboard", path: "/" },
+    { label: "📰 Theme Drafts", path: "/drafts/themes" },
+    { label: "📖 Story Drafts", path: "/drafts/stories" },
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      {/* Navbar */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-6xl mx-auto flex justify-between items-center px-6 py-3">
-          <h1 className="text-xl font-semibold text-blue-600">WWConsole</h1>
-
-          <nav className="flex gap-6">
-            {navItems.map((item) => (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={`font-medium hover:text-blue-600 ${
-                  location.pathname === item.path
-                    ? "text-blue-600"
-                    : "text-gray-600"
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-
-          <div>
-            <button className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700">
-              + Add Draft
-            </button>
-          </div>
+    <div className="min-h-screen flex bg-gray-100 text-gray-800">
+      {/* Sidebar */}
+      <aside className="w-64 bg-white shadow-md flex flex-col">
+        <div className="p-5 border-b">
+          <h1 className="text-2xl font-bold text-blue-700">Wait…What? CMS</h1>
+          <p className="text-sm text-gray-500 mt-1">Editorial Console</p>
         </div>
-      </header>
 
-      {/* Page Content */}
-      <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-8">
-        <Outlet />
+        <nav className="flex-1 p-4 space-y-1">
+          {navItems.map((item) => (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              className={({ isActive }) =>
+                `block px-4 py-2 rounded-md transition ${
+                  isActive
+                    ? "bg-blue-600 text-white"
+                    : "hover:bg-gray-100 text-gray-700"
+                }`
+              }
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
+
+        <div className="p-4 border-t text-center text-xs text-gray-500">
+          <p>© {new Date().getFullYear()} Wait…What?</p>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 overflow-y-auto">
+        <header className="bg-white shadow-sm p-4 flex justify-between items-center">
+          <h2 className="text-lg font-semibold">Content Manager</h2>
+          <a
+            href="https://waitwhat.news"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-blue-600 hover:underline"
+          >
+            View Live Site →
+          </a>
+        </header>
+
+        <div className="p-6">
+          <Outlet />
+        </div>
       </main>
     </div>
   );

@@ -10,9 +10,10 @@ import {
   addTimelineEvent,
   updateTimelineEvent,
   deleteTimelineEvent,
-  publishDraft, // ✅ NEW
+  publishDraft,
+  publishStory,
 } from "../utils/firestoreHelpers";
-import type { Draft, TimelineEvent, AnalysisSection } from "../utils/firestoreHelpers";
+import type { Draft, TimelineEvent } from "../utils/firestoreHelpers";
 import { generateTimeline, generateAnalysis } from "../utils/gptHelpers";
 import { fetchEventCoverage } from "../api/fetchEventCoverage";
 
@@ -23,7 +24,7 @@ export default function EditDraft() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [publishing, setPublishing] = useState(false); // ✅ new state
+  const [publishing, setPublishing] = useState(false);
 
   const [showTimeline, setShowTimeline] = useState(true);
   const [showAnalysis, setShowAnalysis] = useState(true);
@@ -87,15 +88,19 @@ export default function EditDraft() {
   // PUBLISH HANDLER
   // ----------------------------
   const handlePublish = async () => {
-    if (!id) return;
-    if (!window.confirm("Publish this draft to /themes?")) return;
+    if (!id || !draft) return;
+    setPublishing(true);
     try {
-      setPublishing(true);
-      await publishDraft(id);
-      alert("✅ Draft published successfully!");
+      if (draft.category === "Story") {
+        await publishStory(id);
+        alert("✅ Story published successfully!");
+      } else {
+        await publishDraft(id);
+        alert("✅ Theme published successfully!");
+      }
     } catch (err: any) {
       console.error(err);
-      alert("❌ Failed to publish: " + err.message);
+      alert("❌ Publish failed: " + err.message);
     } finally {
       setPublishing(false);
     }
@@ -219,42 +224,25 @@ export default function EditDraft() {
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-8">
       {/* HEADER */}
-      <div className="flex justify-between mb-4">
+      <div className="flex justify-between items-center mb-4">
         <h1 className="text-3xl font-bold">Edit Draft</h1>
         <div className="flex gap-3">
           <button
-            onClick={() => navigate("/drafts")}
+            onClick={() => navigate(-1)}
             className="text-blue-600 hover:underline"
           >
             ← Back
           </button>
-         <div className="flex justify-between items-center mb-4">
-  <h1 className="text-3xl font-bold">Edit Draft</h1>
-  <div className="flex gap-3">
-    <button
-      onClick={() => navigate("/drafts")}
-      className="text-blue-600 hover:underline"
-    >
-      ← Back
-    </button>
-
-    <button
-      onClick={handlePublish}
-      disabled={publishing}
-      className="bg-green-600 text-white px-3 py-1.5 rounded hover:bg-green-700 disabled:opacity-50"
-    >
-      {publishing ? "Publishing…" : "✅ Publish"}
-    </button>
-  </div>
-</div>
-
-
           <button
             onClick={handlePublish}
             disabled={publishing}
             className="bg-green-600 text-white px-3 py-1.5 rounded hover:bg-green-700 disabled:opacity-50"
           >
-            {publishing ? "Publishing…" : "✅ Publish"}
+            {publishing
+              ? "Publishing…"
+              : draft.category === "Story"
+              ? "✅ Publish Story"
+              : "✅ Publish Theme"}
           </button>
         </div>
       </div>
@@ -275,6 +263,13 @@ export default function EditDraft() {
             value={draft.category}
             onChange={handleMetadataChange}
             placeholder="Category"
+            className="border p-2 rounded"
+          />
+          <input
+            name="subcategory"
+            value={draft.subcategory}
+            onChange={handleMetadataChange}
+            placeholder="Subcategory"
             className="border p-2 rounded"
           />
           <textarea
@@ -444,12 +439,11 @@ export default function EditDraft() {
             {loadingAnalysis ? "Generating…" : "🧠 Generate Analysis"}
           </button>
         </div>
+
         {showAnalysis && (
-          <div className="space-y-2">
-            <pre className="text-sm bg-gray-50 p-3 rounded overflow-x-auto">
-              {JSON.stringify(draft.analysis, null, 2)}
-            </pre>
-          </div>
+          <pre className="text-sm bg-gray-50 p-3 rounded overflow-x-auto">
+            {JSON.stringify(draft.analysis, null, 2)}
+          </pre>
         )}
       </div>
     </div>
