@@ -10,10 +10,11 @@ import {
   addTimelineEvent,
   updateTimelineEvent,
   deleteTimelineEvent,
+  publishDraft, // ✅ NEW
 } from "../utils/firestoreHelpers";
 import type { Draft, TimelineEvent, AnalysisSection } from "../utils/firestoreHelpers";
 import { generateTimeline, generateAnalysis } from "../utils/gptHelpers";
-import { fetchEventCoverage } from "../api/fetchEventCoverage"; // ✅ updated import
+import { fetchEventCoverage } from "../api/fetchEventCoverage";
 
 export default function EditDraft() {
   const { id } = useParams<{ id: string }>();
@@ -22,6 +23,7 @@ export default function EditDraft() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false); // ✅ new state
 
   const [showTimeline, setShowTimeline] = useState(true);
   const [showAnalysis, setShowAnalysis] = useState(true);
@@ -82,6 +84,24 @@ export default function EditDraft() {
   };
 
   // ----------------------------
+  // PUBLISH HANDLER
+  // ----------------------------
+  const handlePublish = async () => {
+    if (!id) return;
+    if (!window.confirm("Publish this draft to /themes?")) return;
+    try {
+      setPublishing(true);
+      await publishDraft(id);
+      alert("✅ Draft published successfully!");
+    } catch (err: any) {
+      console.error(err);
+      alert("❌ Failed to publish: " + err.message);
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  // ----------------------------
   // GPT HANDLERS
   // ----------------------------
   const handleGenerateTimeline = async () => {
@@ -138,11 +158,8 @@ export default function EditDraft() {
 
   const handleUpdateEvent = async (index: number, field: keyof TimelineEvent, value: any) => {
     if (!id || !draft) return;
-
     const updatedTimeline = [...draft.timeline];
     updatedTimeline[index] = { ...updatedTimeline[index], [field]: value };
-
-    // ✅ Update Firestore but do not refetch
     await updateTimelineEvent(id, index, updatedTimeline[index]);
     setDraft({ ...draft, timeline: updatedTimeline });
   };
@@ -165,22 +182,18 @@ export default function EditDraft() {
       const result = await fetchEventCoverage(ev.event, ev.description, ev.date);
 
       if (result.sources?.length) {
-        // ✅ Prepare updated event
-      const normalizedSources = result.sources.map((s) => ({
-  ...s,
-  imageUrl: s.imageUrl ?? undefined, // 🔧 convert null → undefined
-}));
+        const normalizedSources = result.sources.map((s) => ({
+          ...s,
+          imageUrl: s.imageUrl ?? undefined,
+        }));
 
-const updatedEvent = {
-  ...draft.timeline[i],
-  sources: normalizedSources,
-  imageUrl: normalizedSources[0]?.imageUrl || draft.timeline[i].imageUrl,
-};
+        const updatedEvent = {
+          ...draft.timeline[i],
+          sources: normalizedSources,
+          imageUrl: normalizedSources[0]?.imageUrl || draft.timeline[i].imageUrl,
+        };
 
-
-        // ✅ Update Firestore and local state simultaneously
         await updateTimelineEvent(id, i, updatedEvent);
-
         const updatedTimeline = [...draft.timeline];
         updatedTimeline[i] = updatedEvent;
         setDraft({ ...draft, timeline: updatedTimeline });
@@ -208,15 +221,71 @@ const updatedEvent = {
       {/* HEADER */}
       <div className="flex justify-between mb-4">
         <h1 className="text-3xl font-bold">Edit Draft</h1>
-        <button onClick={() => navigate("/drafts")} className="text-blue-600 hover:underline">
-          ← Back
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => navigate("/drafts")}
+            className="text-blue-600 hover:underline"
+          >
+            ← Back
+          </button>
+         <div className="flex justify-between items-center mb-4">
+  <h1 className="text-3xl font-bold">Edit Draft</h1>
+  <div className="flex gap-3">
+    <button
+      onClick={() => navigate("/drafts")}
+      className="text-blue-600 hover:underline"
+    >
+      ← Back
+    </button>
+
+    <button
+      onClick={handlePublish}
+      disabled={publishing}
+      className="bg-green-600 text-white px-3 py-1.5 rounded hover:bg-green-700 disabled:opacity-50"
+    >
+      {publishing ? "Publishing…" : "✅ Publish"}
+    </button>
+  </div>
+</div>
+
+
+          <button
+            onClick={handlePublish}
+            disabled={publishing}
+            className="bg-green-600 text-white px-3 py-1.5 rounded hover:bg-green-700 disabled:opacity-50"
+          >
+            {publishing ? "Publishing…" : "✅ Publish"}
+          </button>
+        </div>
       </div>
 
       {/* METADATA */}
       <div className="bg-white p-6 rounded-lg shadow space-y-4">
         <h2 className="text-xl font-semibold mb-4">Metadata</h2>
-        {/* ... your existing metadata form ... */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <input
+            name="title"
+            value={draft.title}
+            onChange={handleMetadataChange}
+            placeholder="Title"
+            className="border p-2 rounded"
+          />
+          <input
+            name="category"
+            value={draft.category}
+            onChange={handleMetadataChange}
+            placeholder="Category"
+            className="border p-2 rounded"
+          />
+          <textarea
+            name="overview"
+            value={draft.overview}
+            onChange={handleMetadataChange}
+            placeholder="Overview"
+            rows={3}
+            className="border p-2 rounded md:col-span-2"
+          />
+        </div>
         <button
           onClick={saveMetadata}
           disabled={saving}
@@ -363,9 +432,25 @@ const updatedEvent = {
         )}
       </div>
 
-      {/* ANALYSIS (unchanged) */}
+      {/* ANALYSIS */}
       <div className="bg-white p-6 rounded-lg shadow">
-        {/* existing analysis UI */}
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold">Analysis</h2>
+          <button
+            onClick={handleGenerateAnalysis}
+            disabled={loadingAnalysis}
+            className="px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+          >
+            {loadingAnalysis ? "Generating…" : "🧠 Generate Analysis"}
+          </button>
+        </div>
+        {showAnalysis && (
+          <div className="space-y-2">
+            <pre className="text-sm bg-gray-50 p-3 rounded overflow-x-auto">
+              {JSON.stringify(draft.analysis, null, 2)}
+            </pre>
+          </div>
+        )}
       </div>
     </div>
   );

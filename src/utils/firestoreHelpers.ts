@@ -11,6 +11,7 @@ import {
   updateDoc,
   deleteDoc,
   doc,
+  setDoc,
   serverTimestamp,
 } from "firebase/firestore";
 
@@ -43,9 +44,6 @@ export interface TimelineEvent {
   }[];
 }
 
-
-
-
 // Analysis structure (3 collapsible tabs)
 export interface AnalysisSection {
   stakeholders: { name: string; detail: string }[];
@@ -67,8 +65,7 @@ export interface Draft {
   analysis: AnalysisSection;
   keywords?: string[];
 
-
-  // 🆕 New fields for workflow and publishing
+  // 🆕 Workflow & publishing
   status?: "draft" | "review" | "published";
   slug: string;
   editorNotes?: string;
@@ -189,4 +186,40 @@ export const deleteTimelineEvent = async (id: string, index: number) => {
 
   const updatedTimeline = draft.timeline.filter((_, i) => i !== index);
   await updateDraft(id, { timeline: updatedTimeline });
+};
+
+// ---------------------------
+// 🔹 Publishing
+// ---------------------------
+
+/**
+ * Publish a draft to the /themes collection
+ * This creates/overwrites a theme doc matching the draft slug.
+ */
+export const publishDraft = async (id: string) => {
+  const draftRef = doc(db, "drafts", id);
+  const snap = await getDoc(draftRef);
+  if (!snap.exists()) throw new Error("Draft not found");
+
+  const draft = snap.data() as Draft;
+  const slug =
+    draft.slug ||
+    draft.title.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, "");
+
+  const themeRef = doc(db, "themes", slug);
+  await setDoc(themeRef, {
+    title: draft.title,
+    category: draft.category,
+    overview: draft.overview,
+    imageUrl: draft.imageUrl || "",
+    timeline: draft.timeline || [],
+    analysis: draft.analysis || { stakeholders: [], faqs: [], future: [] },
+    publishedAt: serverTimestamp(),
+    status: "published",
+  });
+
+  // Mark original draft as published
+  await updateDoc(draftRef, { status: "published", updatedAt: serverTimestamp() });
+
+  console.log(`✅ Draft ${id} published as theme "${slug}"`);
 };
