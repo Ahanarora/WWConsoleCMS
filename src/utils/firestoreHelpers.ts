@@ -223,26 +223,29 @@ export const publishDraft = async (id: string) => {
     draft.slug ||
     draft.title.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, "");
 
+  // ✅ Collect all sources from timeline events
+  const allSources =
+    draft.timeline
+      ?.flatMap((ev) => ev.sources || [])
+      .filter((s) => s?.link && s.link.startsWith("http")) || [];
+
   const collectionName = draft.type === "Story" ? "stories" : "themes";
   const publishRef = doc(db, collectionName, slug);
 
-  await setDoc(
-    publishRef,
-    {
-      ...draft,
-      publishedAt: serverTimestamp(),
-      status: "published",
-    },
-    { merge: true }
-  );
-
-  await updateDoc(draftRef, {
+  await setDoc(publishRef, {
+    ...draft,
+    sources: allSources, // ✅ add top-level sources field
+    publishedAt: serverTimestamp(),
     status: "published",
-    updatedAt: serverTimestamp(),
   });
 
-  console.log(`✅ Published ${draft.type} → /${collectionName}/${slug}`);
+  await updateDoc(draftRef, { status: "published", updatedAt: serverTimestamp() });
+
+  console.log(
+    `✅ Published ${draft.type} → /${collectionName}/${slug} with ${allSources.length} sources`
+  );
 };
+
 
 /** Optional: legacy direct story publisher (not needed if using publishDraft) */
 export const publishStory = async (id: string) => {

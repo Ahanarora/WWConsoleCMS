@@ -445,14 +445,45 @@ export default function EditDraft() {
                   placeholder="Image URL"
                   className="border p-2 rounded"
                 />
-                <input
-                  value={ev.sourceLink || ""}
-                  onChange={(e) =>
-                    handleUpdateEvent(i, "sourceLink", e.target.value)
-                  }
-                  placeholder="Source Link"
-                  className="border p-2 rounded"
-                />
+                {/* 🔗 Multiple Source Links */}
+<div className="space-y-2">
+  <label className="text-sm font-medium text-gray-700">Sources</label>
+
+  {(ev.sources || []).map((src, j) => (
+    <div key={j} className="flex gap-2 items-center">
+      <input
+        value={src.link}
+        onChange={(e) => {
+          const newSources = [...(ev.sources || [])];
+          newSources[j].link = e.target.value;
+          handleUpdateEvent(i, "sources", newSources);
+        }}
+        placeholder={`Source link #${j + 1}`}
+        className="border p-2 rounded w-full"
+      />
+      <button
+        onClick={() => {
+          const newSources = (ev.sources || []).filter((_, idx) => idx !== j);
+          handleUpdateEvent(i, "sources", newSources);
+        }}
+        className="text-red-600 text-sm hover:underline"
+      >
+        ✖
+      </button>
+    </div>
+  ))}
+
+  <button
+    onClick={() => {
+      const newSources = [...(ev.sources || []), { title: "", link: "", sourceName: "" }];
+      handleUpdateEvent(i, "sources", newSources);
+    }}
+    className="text-blue-600 text-sm hover:underline"
+  >
+    ➕ Add another link
+  </button>
+</div>
+
               </div>
 
               <textarea
