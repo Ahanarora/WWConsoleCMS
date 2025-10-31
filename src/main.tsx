@@ -11,6 +11,7 @@ import Layout from "./layout/Layout";
 import DraftsThemes from "./routes/DraftsThemes";
 import DraftsStories from "./routes/DraftsStories";
 import EditDraft from "./routes/EditDraft";
+import PromptLab from "./routes/PromptLab"; // ✅ import PromptLab
 
 const router = createBrowserRouter([
   {
@@ -23,7 +24,8 @@ const router = createBrowserRouter([
           <div className="p-6">
             <h1 className="text-3xl font-bold">Welcome to Wait…What? CMS</h1>
             <p className="text-gray-600 mt-2">
-              Use the sidebar to manage Theme and Story drafts.
+              Use the sidebar to manage Theme and Story drafts, or adjust prompts
+              in the Prompt Lab.
             </p>
           </div>
         ),
@@ -31,6 +33,7 @@ const router = createBrowserRouter([
       { path: "/drafts/themes", element: <DraftsThemes /> },
       { path: "/drafts/stories", element: <DraftsStories /> },
       { path: "/drafts/:id", element: <EditDraft /> },
+      { path: "/promptlab", element: <PromptLab /> }, // ✅ new route
     ],
   },
 ]);

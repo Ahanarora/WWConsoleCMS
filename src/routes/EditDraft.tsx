@@ -26,6 +26,11 @@ export default function EditDraft() {
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
 
+  const [imageOptions, setImageOptions] = useState<string[]>([]);
+  const [showImagePicker, setShowImagePicker] = useState(false);
+  const [selectedEventIndex, setSelectedEventIndex] = useState<number | null>(null);
+
+
   const [showTimeline, setShowTimeline] = useState(true);
   const [showAnalysis, setShowAnalysis] = useState(true);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
@@ -189,7 +194,7 @@ export default function EditDraft() {
       if (result.sources?.length) {
         const normalizedSources = result.sources.map((s) => ({
           ...s,
-          imageUrl: s.imageUrl ?? undefined,
+          imageUrl: s.imageUrl ?? null,
         }));
 
         const updatedEvent = {
@@ -234,23 +239,39 @@ export default function EditDraft() {
             ← Back
           </button>
           <button
-            onClick={handlePublish}
+            onClick={async () => {
+              try {
+                setPublishing(true);
+                await publishDraft(id!);
+                alert(
+                  `✅ ${draft?.type === "Story" ? "Story" : "Theme"} published successfully!`
+                );
+              } catch (err: any) {
+                console.error("❌ Error publishing:", err);
+                alert("❌ Failed to publish draft. Check console for details.");
+              } finally {
+                setPublishing(false);
+              }
+            }}
             disabled={publishing}
             className="bg-green-600 text-white px-3 py-1.5 rounded hover:bg-green-700 disabled:opacity-50"
           >
             {publishing
               ? "Publishing…"
-              : draft.category === "Story"
-              ? "✅ Publish Story"
-              : "✅ Publish Theme"}
+              : draft?.type === "Story"
+                ? "✅ Publish Story"
+                : "✅ Publish Theme"}
           </button>
+
         </div>
       </div>
 
       {/* METADATA */}
       <div className="bg-white p-6 rounded-lg shadow space-y-4">
         <h2 className="text-xl font-semibold mb-4">Metadata</h2>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Title */}
           <input
             name="title"
             value={draft.title}
@@ -258,20 +279,64 @@ export default function EditDraft() {
             placeholder="Title"
             className="border p-2 rounded"
           />
+
+          {/* Category */}
           <input
             name="category"
             value={draft.category}
             onChange={handleMetadataChange}
-            placeholder="Category"
+            placeholder="Category (e.g. Politics, Economy)"
             className="border p-2 rounded"
           />
+
+          {/* Subcategory */}
           <input
             name="subcategory"
             value={draft.subcategory}
             onChange={handleMetadataChange}
-            placeholder="Subcategory"
+            placeholder="Subcategory (e.g. Geopolitical Conflict)"
             className="border p-2 rounded"
           />
+
+          {/* Image URL */}
+          <input
+            name="imageUrl"
+            value={draft.imageUrl || ""}
+            onChange={handleMetadataChange}
+            placeholder="Main Thumbnail / Cover Image URL"
+            className="border p-2 rounded md:col-span-2"
+          />
+
+          {/* Live thumbnail preview */}
+          {draft.imageUrl && (
+            <div className="md:col-span-2 flex justify-start items-center gap-4">
+              <img
+                src={draft.imageUrl}
+                alt="Cover"
+                className="w-48 h-32 object-cover rounded border"
+                onError={(e) => {
+                  const url = draft.imageUrl ?? "";
+                  try {
+                    if (url.startsWith("http")) {
+                      const origin = new URL(url).origin;
+                      e.currentTarget.src = `${origin}/favicon.ico`;
+                    } else {
+                      e.currentTarget.src =
+                        "https://via.placeholder.com/150x100?text=No+Image";
+                    }
+                  } catch {
+                    e.currentTarget.src =
+                      "https://via.placeholder.com/150x100?text=No+Image";
+                  }
+                }}
+              />
+              <p className="text-gray-600 text-sm">
+                Preview of your main thumbnail
+              </p>
+            </div>
+          )}
+
+          {/* Overview */}
           <textarea
             name="overview"
             value={draft.overview}
@@ -281,6 +346,7 @@ export default function EditDraft() {
             className="border p-2 rounded md:col-span-2"
           />
         </div>
+
         <button
           onClick={saveMetadata}
           disabled={saving}
@@ -291,141 +357,192 @@ export default function EditDraft() {
       </div>
 
       {/* TIMELINE */}
-      <div className="bg-white p-6 rounded-lg shadow">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold">Chronology of Events</h2>
-          <div className="flex gap-3 items-center">
-            <button
-              onClick={handleGenerateTimeline}
-              disabled={loadingTimeline}
-              className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-            >
-              {loadingTimeline ? "Generating…" : "🧠 Generate Timeline"}
-            </button>
-            <button
-              onClick={() => setShowTimeline(!showTimeline)}
-              className="text-sm text-blue-600 hover:underline"
-            >
-              {showTimeline ? "Hide" : "Show"}
-            </button>
-          </div>
-        </div>
+<div className="bg-white p-6 rounded-lg shadow">
+  <div className="flex justify-between items-center mb-4">
+    <h2 className="text-xl font-semibold">Chronology of Events</h2>
 
-        {showTimeline && (
-          <>
-            {draft.timeline.length === 0 ? (
-              <p className="text-gray-500 mb-3">No events yet.</p>
-            ) : (
-              <div className="space-y-4 mb-4">
-                {draft.timeline.map((ev, i) => (
-                  <div key={i} className="border p-3 rounded">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
-                      <input
-                        value={ev.date}
-                        onChange={(e) => handleUpdateEvent(i, "date", e.target.value)}
-                        placeholder="Date"
-                        className="border p-2 rounded"
-                      />
-                      <input
-                        value={ev.event}
-                        onChange={(e) => handleUpdateEvent(i, "event", e.target.value)}
-                        placeholder="Event"
-                        className="border p-2 rounded"
-                      />
-                      <input
-                        value={ev.imageUrl || ""}
-                        onChange={(e) => handleUpdateEvent(i, "imageUrl", e.target.value)}
-                        placeholder="Image URL"
-                        className="border p-2 rounded"
-                      />
-                      <input
-                        value={ev.sourceLink || ""}
-                        onChange={(e) => handleUpdateEvent(i, "sourceLink", e.target.value)}
-                        placeholder="Source Link"
-                        className="border p-2 rounded"
-                      />
-                    </div>
+    <div className="flex gap-3 items-center">
+      {/* 🧠 Generate Timeline */}
+      <button
+        onClick={handleGenerateTimeline}
+        disabled={loadingTimeline}
+        className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+      >
+        {loadingTimeline ? "Generating…" : "🧠 Generate Timeline"}
+      </button>
 
-                    <textarea
-                      value={ev.description}
-                      onChange={(e) => handleUpdateEvent(i, "description", e.target.value)}
-                      placeholder="Description"
-                      rows={2}
-                      className="border p-2 rounded w-full mb-2"
-                    />
+      {/* ➕ Add Event */}
+      <button
+        onClick={async () => {
+          const newItem = {
+            date: "",
+            event: "",
+            description: "",
+            significance: 1,
+            imageUrl: "",
+            sourceLink: "",
+            sources: [],
+          };
+          const updatedTimeline = [...(draft.timeline || []), newItem];
+          setDraft({ ...draft, timeline: updatedTimeline });
 
-                    <label className="block text-sm text-gray-600 mb-1">Importance</label>
-                    <select
-                      value={ev.significance}
-                      onChange={(e) =>
-                        handleUpdateEvent(i, "significance", Number(e.target.value))
-                      }
-                      className="border p-2 rounded mb-2"
-                    >
-                      <option value={1}>Low</option>
-                      <option value={2}>Medium</option>
-                      <option value={3}>High</option>
-                    </select>
+          // ✅ Optional Enhancement: Auto-save to Firestore
+          if (id) {
+            try {
+              await updateDraft(id, { timeline: updatedTimeline });
+              console.log("✅ New event added and saved to Firestore.");
+            } catch (err) {
+              console.error("❌ Failed to save new event:", err);
+              alert("❌ Failed to save new event.");
+            }
+          }
+        }}
+        className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+      >
+        ➕ Add Event
+      </button>
 
-                    {/* Buttons */}
-                    <div className="flex gap-4 items-center mt-2">
-                      <button
-                        onClick={() => handleDeleteEvent(i)}
-                        className="text-red-600 text-sm hover:underline"
+      {/* 👁️ Toggle Show/Hide */}
+      <button
+        onClick={() => setShowTimeline(!showTimeline)}
+        className="text-sm text-blue-600 hover:underline"
+      >
+        {showTimeline ? "Hide" : "Show"}
+      </button>
+    </div>
+  </div>
+
+  {showTimeline && (
+    <>
+      {draft.timeline.length === 0 ? (
+        <p className="text-gray-500 mb-3">No events yet.</p>
+      ) : (
+        <div className="space-y-4 mb-4">
+          {draft.timeline.map((ev, i) => (
+            <div key={i} className="border p-3 rounded">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+                <input
+                  value={ev.date}
+                  onChange={(e) =>
+                    handleUpdateEvent(i, "date", e.target.value)
+                  }
+                  placeholder="Date"
+                  className="border p-2 rounded"
+                />
+                <input
+                  value={ev.event}
+                  onChange={(e) =>
+                    handleUpdateEvent(i, "event", e.target.value)
+                  }
+                  placeholder="Event"
+                  className="border p-2 rounded"
+                />
+                <input
+                  value={ev.imageUrl || ""}
+                  onChange={(e) =>
+                    handleUpdateEvent(i, "imageUrl", e.target.value)
+                  }
+                  placeholder="Image URL"
+                  className="border p-2 rounded"
+                />
+                <input
+                  value={ev.sourceLink || ""}
+                  onChange={(e) =>
+                    handleUpdateEvent(i, "sourceLink", e.target.value)
+                  }
+                  placeholder="Source Link"
+                  className="border p-2 rounded"
+                />
+              </div>
+
+              <textarea
+                value={ev.description}
+                onChange={(e) =>
+                  handleUpdateEvent(i, "description", e.target.value)
+                }
+                placeholder="Description"
+                rows={2}
+                className="border p-2 rounded w-full mb-2"
+              />
+
+              <label className="block text-sm text-gray-600 mb-1">
+                Importance
+              </label>
+              <select
+                value={ev.significance}
+                onChange={(e) =>
+                  handleUpdateEvent(i, "significance", Number(e.target.value))
+                }
+                className="border p-2 rounded mb-2"
+              >
+                <option value={1}>Low</option>
+                <option value={2}>Medium</option>
+                <option value={3}>High</option>
+              </select>
+
+              {/* Buttons */}
+              <div className="flex gap-4 items-center mt-2">
+                <button
+                  onClick={() => handleDeleteEvent(i)}
+                  className="text-red-600 text-sm hover:underline"
+                >
+                  Delete
+                </button>
+                <button
+                  onClick={() => handleFetchCoverage(i, ev)}
+                  className="text-blue-600 text-sm hover:underline"
+                >
+                  🔗 Fetch Top Sources
+                </button>
+              </div>
+
+              {/* Top Sources */}
+              {ev.sources && ev.sources.length > 0 && (
+                <div className="mt-3 border-t pt-2">
+                  <h4 className="text-sm font-semibold mb-2">Top Sources:</h4>
+                  <div className="space-y-2">
+                    {ev.sources.map((s: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="flex items-center space-x-3 border p-2 rounded-md hover:bg-gray-50"
                       >
-                        Delete
-                      </button>
-                      <button
-                        onClick={() => handleFetchCoverage(i, ev)}
-                        className="text-blue-600 text-sm hover:underline"
-                      >
-                        🔗 Fetch Top Sources
-                      </button>
-                    </div>
-
-                    {/* Top Sources */}
-                    {ev.sources && ev.sources.length > 0 && (
-                      <div className="mt-3 border-t pt-2">
-                        <h4 className="text-sm font-semibold mb-2">Top Sources:</h4>
-                        <div className="space-y-2">
-                          {ev.sources.map((s: any, idx: number) => (
-                            <div
-                              key={idx}
-                              className="flex items-center space-x-3 border p-2 rounded-md hover:bg-gray-50"
-                            >
-                              {s.imageUrl && (
-                                <img
-                                  src={s.imageUrl}
-                                  alt={s.title}
-                                  className="w-10 h-10 object-cover rounded"
-                                  onError={(e) => {
-                                    e.currentTarget.src = `${new URL(s.link).origin}/favicon.ico`;
-                                  }}
-                                />
-                              )}
-                              <div className="flex flex-col">
-                                <a
-                                  href={s.link}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 font-medium hover:underline"
-                                >
-                                  {s.title}
-                                </a>
-                                <span className="text-gray-500 text-xs">{s.sourceName}</span>
-                              </div>
-                            </div>
-                          ))}
+                        {s.imageUrl && (
+                          <img
+                            src={s.imageUrl}
+                            alt={s.title}
+                            className="w-10 h-10 object-cover rounded"
+                            onError={(e) => {
+                              e.currentTarget.src = `${new URL(
+                                s.link
+                              ).origin}/favicon.ico`;
+                            }}
+                          />
+                        )}
+                        <div className="flex flex-col">
+                          <a
+                            href={s.link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 font-medium hover:underline"
+                          >
+                            {s.title}
+                          </a>
+                          <span className="text-gray-500 text-xs">
+                            {s.sourceName}
+                          </span>
                         </div>
                       </div>
-                    )}
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-      </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  )}
+</div>
 
       {/* ANALYSIS */}
       <div className="bg-white p-6 rounded-lg shadow">
@@ -441,11 +558,168 @@ export default function EditDraft() {
         </div>
 
         {showAnalysis && (
-          <pre className="text-sm bg-gray-50 p-3 rounded overflow-x-auto">
-            {JSON.stringify(draft.analysis, null, 2)}
-          </pre>
+          <div className="space-y-4">
+            {["stakeholders", "faqs", "future"].map((sectionKey) => {
+              const analysis = draft.analysis as Record<string, any>;
+              const section = analysis?.[sectionKey] || [];
+              const labels: Record<string, string> = {
+                stakeholders: "Stakeholders",
+                faqs: "FAQs",
+                future: "Future Questions",
+              };
+
+              return (
+                <details key={sectionKey} className="border rounded-lg p-3 group">
+                  <summary className="cursor-pointer font-semibold text-blue-700 select-none flex justify-between items-center">
+                    {labels[sectionKey]}
+                    <span className="text-gray-500 group-open:rotate-90 transition-transform">
+                      ▶
+                    </span>
+                  </summary>
+
+                  <div className="mt-2 space-y-3">
+                    {/* ➕ Add button */}
+                    <button
+                      onClick={() => {
+                        const updated = { ...draft };
+                        const list = analysis?.[sectionKey] || [];
+                        const newItem =
+                          sectionKey === "stakeholders"
+                            ? { name: "", detail: "" }
+                            : { question: "", answer: "" };
+                        updated.analysis = {
+                          ...analysis,
+                          [sectionKey]: [...list, newItem],
+                        };
+                        setDraft(updated);
+                      }}
+                      className="text-sm text-green-700 hover:underline"
+                    >
+                      ➕ Add {labels[sectionKey].slice(0, -1)}
+                    </button>
+
+                    {/* Items list */}
+                    {section.length === 0 ? (
+                      <p className="text-sm text-gray-500">
+                        No {labels[sectionKey]} yet.
+                      </p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {section.map((item: any, idx: number) => (
+                          <li
+                            key={idx}
+                            className="p-3 bg-gray-50 rounded-md border text-sm space-y-2"
+                          >
+                            {sectionKey === "stakeholders" ? (
+                              <>
+                                <input
+                                  type="text"
+                                  value={item.name}
+                                  onChange={(e) => {
+                                    const updated = { ...draft };
+                                    (
+                                      (updated.analysis as Record<string, any>)[
+                                      sectionKey
+                                      ][idx]
+                                    ).name = e.target.value;
+                                    setDraft(updated);
+                                  }}
+                                  placeholder="Name"
+                                  className="w-full border p-1 rounded"
+                                />
+                                <textarea
+                                  value={item.detail}
+                                  onChange={(e) => {
+                                    const updated = { ...draft };
+                                    (
+                                      (updated.analysis as Record<string, any>)[
+                                      sectionKey
+                                      ][idx]
+                                    ).detail = e.target.value;
+                                    setDraft(updated);
+                                  }}
+                                  placeholder="Detail"
+                                  className="w-full border p-1 rounded"
+                                />
+                              </>
+                            ) : (
+                              <>
+                                <input
+                                  type="text"
+                                  value={item.question}
+                                  onChange={(e) => {
+                                    const updated = { ...draft };
+                                    (
+                                      (updated.analysis as Record<string, any>)[
+                                      sectionKey
+                                      ][idx]
+                                    ).question = e.target.value;
+                                    setDraft(updated);
+                                  }}
+                                  placeholder="Question"
+                                  className="w-full border p-1 rounded"
+                                />
+                                <textarea
+                                  value={item.answer}
+                                  onChange={(e) => {
+                                    const updated = { ...draft };
+                                    (
+                                      (updated.analysis as Record<string, any>)[
+                                      sectionKey
+                                      ][idx]
+                                    ).answer = e.target.value;
+                                    setDraft(updated);
+                                  }}
+                                  placeholder="Answer"
+                                  className="w-full border p-1 rounded"
+                                />
+                              </>
+                            )}
+
+                            {/* ❌ Delete button */}
+                            <button
+                              onClick={() => {
+                                const updated = { ...draft };
+                                const list = [...(analysis?.[sectionKey] || [])];
+                                list.splice(idx, 1);
+                                updated.analysis = {
+                                  ...analysis,
+                                  [sectionKey]: list,
+                                };
+                                setDraft(updated);
+                              }}
+                              className="text-xs text-red-600 hover:underline"
+                            >
+                              Delete
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </details>
+              );
+            })}
+          </div>
         )}
-      </div>
+
+              {/* 💾 Save button */}
+      <button
+        onClick={async () => {
+          if (!id) return;
+          try {
+            await updateDraft(id, { analysis: draft.analysis });
+            alert("✅ Analysis saved successfully!");
+          } catch (err: any) {
+            console.error(err);
+            alert("❌ Failed to save analysis: " + err.message);
+          }
+        }}
+        className="mt-4 bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
+      >
+        💾 Save Analysis
+         </button>
     </div>
-  );
+  </div>
+);
 }

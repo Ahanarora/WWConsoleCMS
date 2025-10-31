@@ -36,25 +36,37 @@ export interface TimelineEvent {
   significance: number;
   imageUrl?: string;
   sourceLink?: string;
-  sources?: {
-    title: string;
-    link: string;
-    sourceName: string;
-    imageUrl?: string;
-  }[];
+  sources?: SourceItem[];
 }
 
-// Analysis structure (3 collapsible tabs)
+// ---------------------------
+// 🔹 Analysis Types
+// ---------------------------
+
+export interface Stakeholder {
+  name: string;
+  detail: string;
+}
+
+export interface QA {
+  question: string;
+  answer: string;
+}
+
 export interface AnalysisSection {
-  stakeholders: { name: string; detail: string }[];
-  faqs: { question: string; answer: string }[];
-  future: { question: string; answer: string }[];
+  stakeholders: Stakeholder[];
+  faqs: QA[];
+  future: QA[];
+  [key: string]: any; // dynamic access safety for UI
 }
 
-// ✅ Main Draft schema (finalized)
+// ---------------------------
+// 🔹 Main Draft Schema
+// ---------------------------
+
 export interface Draft {
   id?: string;
-    type?: "Theme" | "Story"; // 🆕 differentiates between draft kinds
+  type?: "Theme" | "Story"; // differentiates between draft kinds
   title: string;
   overview: string;
   category: string;
@@ -63,14 +75,17 @@ export interface Draft {
   imageUrl?: string;
   sources: string[];
   timeline: TimelineEvent[];
-  analysis: AnalysisSection;
-  keywords?: string[];
 
-  // 🆕 Workflow & publishing
+  /**
+   * ✅ analysis is now optional and partial
+   * (so drafts can exist without full analysis initially)
+   */
+  analysis?: Partial<AnalysisSection>;
+
+  keywords?: string[];
   status?: "draft" | "review" | "published";
   slug: string;
   editorNotes?: string;
-
   updatedAt?: any;
 }
 
@@ -92,7 +107,6 @@ export const createDraft = async (data: Partial<Draft>) => {
     timeline: [],
     analysis: { stakeholders: [], faqs: [], future: [] },
 
-    // Workflow defaults
     status: data.status || "draft",
     slug:
       data.slug ||
@@ -100,7 +114,6 @@ export const createDraft = async (data: Partial<Draft>) => {
         ? data.title.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, "")
         : ""),
     editorNotes: data.editorNotes || "",
-
     updatedAt: serverTimestamp(),
   };
 
@@ -126,13 +139,17 @@ export const fetchDraft = async (id: string): Promise<Draft | null> => {
     : null;
 };
 
-/** Generic update for any fields */
-export const updateDraft = async (id: string, newData: Partial<Draft>) => {
-  const docRef = doc(db, "drafts", id);
-  await updateDoc(docRef, {
-    ...newData,
-    updatedAt: serverTimestamp(),
-  });
+/** ✅ Generic update (partial + merge support) */
+export const updateDraft = async (id: string, patch: Partial<Draft>) => {
+  const ref = doc(db, "drafts", id);
+  await setDoc(
+    ref,
+    {
+      ...patch,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true } // 🔹 merge ensures partial updates like { analysis: { faqs: [...] } } work safely
+  );
 };
 
 /** Delete draft */
@@ -160,6 +177,7 @@ export const addTimelineEvent = async (
     significance: eventData.significance || 1,
     imageUrl: eventData.imageUrl || "",
     sourceLink: eventData.sourceLink || "",
+    sources: eventData.sources || [],
   };
 
   const updatedTimeline = [...(draft.timeline || []), newEvent];
@@ -194,10 +212,7 @@ export const deleteTimelineEvent = async (id: string, index: number) => {
 // 🔹 Publishing
 // ---------------------------
 
-/**
- * Publish a draft to the /themes collection
- * This creates/overwrites a theme doc matching the draft slug.
- */
+/** ✅ Smart publishing function — routes based on draft type */
 export const publishDraft = async (id: string) => {
   const draftRef = doc(db, "drafts", id);
   const snap = await getDoc(draftRef);
@@ -208,42 +223,28 @@ export const publishDraft = async (id: string) => {
     draft.slug ||
     draft.title.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, "");
 
-  const themeRef = doc(db, "themes", slug);
-  await setDoc(themeRef, {
-    title: draft.title,
-    category: draft.category,
-    overview: draft.overview,
-    imageUrl: draft.imageUrl || "",
-    timeline: draft.timeline || [],
-    analysis: draft.analysis || { stakeholders: [], faqs: [], future: [] },
-    publishedAt: serverTimestamp(),
+  const collectionName = draft.type === "Story" ? "stories" : "themes";
+  const publishRef = doc(db, collectionName, slug);
+
+  await setDoc(
+    publishRef,
+    {
+      ...draft,
+      publishedAt: serverTimestamp(),
+      status: "published",
+    },
+    { merge: true }
+  );
+
+  await updateDoc(draftRef, {
     status: "published",
+    updatedAt: serverTimestamp(),
   });
 
-  // Mark original draft as published
-  await updateDoc(draftRef, { status: "published", updatedAt: serverTimestamp() });
-
-  console.log(`✅ Draft ${id} published as theme "${slug}"`);
+  console.log(`✅ Published ${draft.type} → /${collectionName}/${slug}`);
 };
 
+/** Optional: legacy direct story publisher (not needed if using publishDraft) */
 export const publishStory = async (id: string) => {
-  const draftRef = doc(db, "drafts", id);
-  const snap = await getDoc(draftRef);
-  if (!snap.exists()) throw new Error("Draft not found");
-
-  const draft = snap.data() as Draft;
-  const slug = draft.slug || draft.title.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, "");
-
-  const storyRef = doc(db, "stories", slug);
-  await setDoc(storyRef, {
-    title: draft.title,
-    overview: draft.overview,
-    category: draft.category,
-    timeline: draft.timeline || [],
-    analysis: draft.analysis || {},
-    publishedAt: serverTimestamp(),
-    status: "published",
-  });
-
-  await updateDoc(draftRef, { status: "published" });
+  await publishDraft(id);
 };

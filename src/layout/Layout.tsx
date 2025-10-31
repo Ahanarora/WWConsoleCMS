@@ -10,6 +10,7 @@ export default function Layout() {
     { label: "🏠 Dashboard", path: "/" },
     { label: "📰 Theme Drafts", path: "/drafts/themes" },
     { label: "📖 Story Drafts", path: "/drafts/stories" },
+    { label: "⚙️ Prompt Lab", path: "/promptlab" }, // ✅ New link
   ];
 
   return (
