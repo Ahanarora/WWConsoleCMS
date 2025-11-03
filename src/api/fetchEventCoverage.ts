@@ -35,16 +35,13 @@ async function buildSerperQuery({
     const ref = doc(db, "settings", "global");
     const snap = await getDoc(ref);
 
-    // Default to "title" behavior if not configured
     const rawPrompt = snap.exists()
       ? snap.data()?.serper?.prompt || "title"
       : "title";
 
-    // If the prompt is literally "title", fallback to the event title
     if (rawPrompt.trim().toLowerCase() === "title")
       return title || event || description || "";
 
-    // Otherwise, replace placeholders
     let query = rawPrompt;
     query = query
       .replace(/{{\s*title\s*}}/gi, title || "")
@@ -58,6 +55,9 @@ async function buildSerperQuery({
   }
 }
 
+// -----------------------------------------------------
+// ✅ Old 3-argument version
+// -----------------------------------------------------
 export async function fetchEventCoverage(
   event: string,
   description: string,
@@ -67,7 +67,6 @@ export async function fetchEventCoverage(
   const callable = httpsCallable(functions, "fetchEventCoverage");
 
   try {
-    // 🔹 Build the query dynamically from Firestore settings
     const query = await buildSerperQuery({ title: event, event, description });
     console.log("🔍 Serper query:", query);
 

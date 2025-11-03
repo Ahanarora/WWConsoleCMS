@@ -30,7 +30,6 @@ export default function EditDraft() {
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [selectedEventIndex, setSelectedEventIndex] = useState<number | null>(null);
 
-
   const [showTimeline, setShowTimeline] = useState(true);
   const [showAnalysis, setShowAnalysis] = useState(true);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
