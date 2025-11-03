@@ -16,6 +16,8 @@ import {
 import type { Draft, TimelineEvent } from "../utils/firestoreHelpers";
 import { generateTimeline, generateAnalysis } from "../utils/gptHelpers";
 import { fetchEventCoverage } from "../api/fetchEventCoverage";
+import { renderLinkedText } from "../utils/renderLinkedText.tsx";
+
 
 
 
@@ -639,6 +641,36 @@ useEffect(() => {
                 rows={2}
                 className="border p-2 rounded w-full mb-2"
               />
+
+{/* 🔗 Link selected text */}
+<button
+  onClick={() => {
+    const targetId = prompt("Enter linked story/theme ID (e.g. story/abc123 or theme/xyz456):");
+    const selection = window.getSelection()?.toString();
+    if (!selection) {
+      alert("Select a term first, then click Link");
+      return;
+    }
+
+    const newDesc = ev.description.replace(
+      selection,
+      `[${selection}](@${targetId})`
+    );
+    const updatedTimeline = [...draft.timeline];
+    updatedTimeline[i] = { ...ev, description: newDesc };
+    setDraft({ ...draft, timeline: updatedTimeline });
+    setUnsaved(true);
+  }}
+  className="text-blue-600 text-xs hover:underline mb-2"
+>
+  🔗 Link selected text
+</button>
+
+
+{/* Preview of description with clickable links */}
+<div className="text-sm text-gray-700 mt-2">
+  {renderLinkedText(ev.description)}
+</div>
 
               {/* 🧠 Context Explainers for this Event */}
 <div className="mt-2">
