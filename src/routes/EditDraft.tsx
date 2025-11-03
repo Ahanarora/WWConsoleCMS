@@ -17,6 +17,8 @@ import type { Draft, TimelineEvent } from "../utils/firestoreHelpers";
 import { generateTimeline, generateAnalysis } from "../utils/gptHelpers";
 import { fetchEventCoverage } from "../api/fetchEventCoverage";
 
+
+
 export default function EditDraft() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -25,6 +27,8 @@ export default function EditDraft() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [unsaved, setUnsaved] = useState(false);
+
 
   const [imageOptions, setImageOptions] = useState<string[]>([]);
   const [showImagePicker, setShowImagePicker] = useState(false);
@@ -63,6 +67,20 @@ export default function EditDraft() {
     load();
   }, [id]);
 
+  
+
+  // Warn user if there are unsaved changes
+useEffect(() => {
+  const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+    if (unsaved) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+  };
+  window.addEventListener("beforeunload", handleBeforeUnload);
+  return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+}, [unsaved]);
+
   // ----------------------------
   // METADATA HANDLERS
   // ----------------------------
@@ -79,6 +97,7 @@ export default function EditDraft() {
     try {
       setSaving(true);
       await updateDraft(id, draft);
+      setUnsaved(false);
       alert("✅ Metadata saved");
     } catch (err) {
       console.error(err);
@@ -169,8 +188,8 @@ export default function EditDraft() {
     if (!id || !draft) return;
     const updatedTimeline = [...draft.timeline];
     updatedTimeline[index] = { ...updatedTimeline[index], [field]: value };
-    await updateTimelineEvent(id, index, updatedTimeline[index]);
     setDraft({ ...draft, timeline: updatedTimeline });
+    setUnsaved(true);
   };
 
   const handleDeleteEvent = async (index: number) => {
@@ -179,6 +198,7 @@ export default function EditDraft() {
     await deleteTimelineEvent(id, index);
     const updated = await fetchDraft(id);
     setDraft(updated);
+    setUnsaved(true);
   };
 
   // ----------------------------
@@ -204,8 +224,8 @@ export default function EditDraft() {
 
         await updateTimelineEvent(id, i, updatedEvent);
         const updatedTimeline = [...draft.timeline];
-        updatedTimeline[i] = updatedEvent;
         setDraft({ ...draft, timeline: updatedTimeline });
+
 
         alert(`✅ Found ${result.sources.length} sources for "${ev.event}"`);
       } else {
@@ -230,6 +250,10 @@ export default function EditDraft() {
       {/* HEADER */}
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-3xl font-bold">Edit Draft</h1>
+        {unsaved && (
+  <p className="text-yellow-600 text-sm mt-1">⚠️ You have unsaved changes</p>
+)}
+
         <div className="flex gap-3">
           <button
             onClick={() => navigate(-1)}
@@ -500,6 +524,28 @@ export default function EditDraft() {
         ➕ Add Event
       </button>
 
+      {/* 💾 Save Timeline */}
+<button
+  onClick={async () => {
+    if (!id || !draft) return;
+    try {
+      setSaving(true);
+      await updateDraft(id, { timeline: draft.timeline });
+      setUnsaved(false);
+      alert("✅ Timeline saved successfully!");
+    } catch (err) {
+      console.error("❌ Timeline save failed:", err);
+      alert("❌ Failed to save timeline.");
+    } finally {
+      setSaving(false);
+    }
+  }}
+  className="px-3 py-1 bg-yellow-600 text-white rounded hover:bg-yellow-700 text-sm"
+>
+  💾 Save Timeline
+</button>
+
+
       {/* 👁️ Toggle Show/Hide */}
       <button
         onClick={() => setShowTimeline(!showTimeline)}
@@ -719,6 +765,27 @@ export default function EditDraft() {
                 >
                   🔗 Fetch Top Sources
                 </button>
+                <button
+  onClick={async () => {
+    if (!id) return;
+    try {
+      setSaving(true);
+      await updateTimelineEvent(id, i, draft.timeline[i]);
+      setUnsaved(false);
+      alert("✅ Event saved!");
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to save event.");
+    } finally {
+      setSaving(false);
+    }
+  }}
+  className="text-green-600 text-sm hover:underline"
+>
+  💾 Save Event
+</button>
+
+
               </div>
 
               {/* Top Sources */}
@@ -901,6 +968,8 @@ export default function EditDraft() {
                               </>
                             )}
 
+                        
+
                             {/* ❌ Delete button */}
                             <button
                               onClick={() => {
@@ -934,6 +1003,7 @@ export default function EditDraft() {
           if (!id) return;
           try {
             await updateDraft(id, { analysis: draft.analysis });
+            setUnsaved(false);
             alert("✅ Analysis saved successfully!");
           } catch (err: any) {
             console.error(err);
