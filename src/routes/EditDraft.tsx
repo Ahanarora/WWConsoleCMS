@@ -346,6 +346,101 @@ export default function EditDraft() {
           />
         </div>
 
+        {/* 🧠 Context Explainers for Overview */}
+<div className="mt-6">
+  <h3 className="text-lg font-semibold mb-2">Context Explainers (Overview)</h3>
+  <p className="text-sm text-gray-500 mb-3">
+    Add terms that will be highlighted in the overview for reader context.
+  </p>
+
+  {(draft.contexts || []).map((ctx, i) => (
+    <div key={i} className="flex gap-2 items-center mb-2">
+      <input
+        type="text"
+        value={ctx.term}
+        onChange={(e) => {
+          const updated = [...(draft.contexts || [])];
+          updated[i].term = e.target.value;
+          setDraft({ ...draft, contexts: updated });
+        }}
+        placeholder="Term"
+        className="border p-2 rounded flex-1"
+      />
+      <input
+        type="text"
+        value={ctx.explainer}
+        onChange={(e) => {
+          const updated = [...(draft.contexts || [])];
+          updated[i].explainer = e.target.value;
+          setDraft({ ...draft, contexts: updated });
+        }}
+        placeholder="Explainer"
+        className="border p-2 rounded flex-[2]"
+      />
+      <button
+        onClick={() => {
+          const updated = (draft.contexts || []).filter((_, j) => j !== i);
+          setDraft({ ...draft, contexts: updated });
+        }}
+        className="text-red-500 text-sm hover:underline"
+      >
+        ✖
+      </button>
+    </div>
+  ))}
+
+  <button
+    onClick={() =>
+      setDraft({
+        ...draft,
+        contexts: [...(draft.contexts || []), { term: "", explainer: "" }],
+      })
+    }
+    className="text-blue-600 text-sm hover:underline"
+  >
+    ➕ Add new context term
+  </button>
+</div>
+
+
+{/* ✨ GPT Auto-suggest */}
+<button
+  onClick={async () => {
+    if (!draft.overview) {
+      alert("Please write an overview first!");
+      return;
+    }
+    try {
+      const confirm = window.confirm("Use GPT to suggest contextual explainers?");
+      if (!confirm) return;
+
+      // Optional loading flag
+      setSaving(true);
+      const { generateContexts } = await import("../utils/gptHelpers");
+      const suggested = await generateContexts(draft.overview);
+
+      if (!suggested || suggested.length === 0) {
+        alert("No terms found.");
+        return;
+      }
+
+      const merged = [...(draft.contexts || []), ...suggested];
+      setDraft({ ...draft, contexts: merged });
+      alert(`✅ Added ${suggested.length} suggested context terms.`);
+    } catch (err: any) {
+      console.error("❌ GPT error:", err);
+      alert("Failed to fetch GPT suggestions. Check console.");
+    } finally {
+      setSaving(false);
+    }
+  }}
+  className="text-purple-600 text-sm hover:underline mt-2"
+>
+  ✨ Suggest Contexts with GPT
+</button>
+
+
+
         <button
           onClick={saveMetadata}
           disabled={saving}
@@ -354,6 +449,10 @@ export default function EditDraft() {
           {saving ? "Saving..." : "Save Metadata"}
         </button>
       </div>
+
+      
+
+      
 
       {/* TIMELINE */}
 <div className="bg-white p-6 rounded-lg shadow">
@@ -494,6 +593,102 @@ export default function EditDraft() {
                 rows={2}
                 className="border p-2 rounded w-full mb-2"
               />
+
+              {/* 🧠 Context Explainers for this Event */}
+<div className="mt-2">
+  <h4 className="text-sm font-medium mb-1">Context Explainers</h4>
+  {(ev.contexts || []).map((ctx, j) => (
+    <div key={j} className="flex gap-2 items-center mb-1">
+      <input
+        type="text"
+        value={ctx.term}
+        onChange={(e) => {
+          const newContexts = [...(ev.contexts || [])];
+          newContexts[j].term = e.target.value;
+          handleUpdateEvent(i, "contexts", newContexts);
+        }}
+        placeholder="Term"
+        className="border p-1 rounded flex-1"
+      />
+      <input
+        type="text"
+        value={ctx.explainer}
+        onChange={(e) => {
+          const newContexts = [...(ev.contexts || [])];
+          newContexts[j].explainer = e.target.value;
+          handleUpdateEvent(i, "contexts", newContexts);
+        }}
+        placeholder="Explainer"
+        className="border p-1 rounded flex-[2]"
+      />
+      <button
+        onClick={() => {
+          const newContexts = (ev.contexts || []).filter((_, k) => k !== j);
+          handleUpdateEvent(i, "contexts", newContexts);
+        }}
+        className="text-red-600 text-xs hover:underline"
+      >
+        ✖
+      </button>
+    </div>
+  ))}
+  <button
+    onClick={() => {
+      const newContexts = [...(ev.contexts || []), { term: "", explainer: "" }];
+      handleUpdateEvent(i, "contexts", newContexts);
+    }}
+    className="text-blue-600 text-xs hover:underline"
+  >
+    ➕ Add term
+  </button>
+</div>
+
+{/* ✨ GPT Explainer Generator for this event */}
+<button
+  onClick={async () => {
+    const eventData = {
+      event: ev.event,
+      description: ev.description,
+      contexts: ev.contexts || [],
+    };
+
+    if (!eventData.contexts.length) {
+      alert("Please add at least one term first.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const { generateExplainersForEvent } = await import("../utils/gptHelpers");
+      const suggested = await generateExplainersForEvent(eventData);
+
+      if (!suggested.length) {
+        alert("No explainers returned.");
+        return;
+      }
+
+      // Merge GPT explainers into event’s contexts
+      const merged = (eventData.contexts || []).map((ctx) => {
+        const found = suggested.find(
+          (s) => s.term.toLowerCase() === ctx.term.toLowerCase()
+        );
+        return found ? { ...ctx, explainer: found.explainer } : ctx;
+      });
+
+      handleUpdateEvent(i, "contexts", merged);
+      alert(`✅ Added ${suggested.length} explainers.`);
+    } catch (err: any) {
+      console.error("GPT error:", err);
+      alert("Failed to generate explainers for this event.");
+    } finally {
+      setSaving(false);
+    }
+  }}
+  className="text-purple-600 text-xs hover:underline mt-2 block"
+>
+  ✨ Generate Explainers for this Event
+</button>
+
 
               <label className="block text-sm text-gray-600 mb-1">
                 Importance

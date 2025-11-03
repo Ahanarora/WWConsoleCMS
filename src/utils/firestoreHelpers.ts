@@ -37,6 +37,7 @@ export interface TimelineEvent {
   imageUrl?: string;
   sourceLink?: string;
   sources?: SourceItem[];
+  contexts?: { term: string; explainer: string }[]; // ✅ new
 }
 
 // ---------------------------
@@ -75,6 +76,7 @@ export interface Draft {
   imageUrl?: string;
   sources: string[];
   timeline: TimelineEvent[];
+   contexts?: { term: string; explainer: string }[];
 
   /**
    * ✅ analysis is now optional and partial
