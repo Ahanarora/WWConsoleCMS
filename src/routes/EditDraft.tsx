@@ -1,4 +1,3 @@
-// ----------------------------------------
 // src/routes/EditDraft.tsx
 // ----------------------------------------
 
@@ -20,7 +19,6 @@ import { renderLinkedText } from "../utils/renderLinkedText.tsx";
 
 
 
-
 export default function EditDraft() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -33,7 +31,6 @@ export default function EditDraft() {
   const [selectionMap, setSelectionMap] = useState<
   Record<number, { start: number; end: number }>
 >({});
-
 
 
   const [imageOptions, setImageOptions] = useState<string[]>([]);
@@ -231,7 +228,6 @@ useEffect(() => {
         await updateTimelineEvent(id, i, updatedEvent);
         const updatedTimeline = [...draft.timeline];
         setDraft({ ...draft, timeline: updatedTimeline });
-
 
         alert(`✅ Found ${result.sources.length} sources for "${ev.event}"`);
       } else {
@@ -432,7 +428,6 @@ useEffect(() => {
   </button>
 </div>
 
-
 {/* ✨ GPT Auto-suggest */}
 <button
   onClick={async () => {
@@ -468,7 +463,6 @@ useEffect(() => {
 >
   ✨ Suggest Contexts with GPT
 </button>
-
 
 
         <button
@@ -550,7 +544,6 @@ useEffect(() => {
 >
   💾 Save Timeline
 </button>
-
 
       {/* 👁️ Toggle Show/Hide */}
       <button
@@ -656,14 +649,16 @@ useEffect(() => {
   className="border p-2 rounded w-full mb-2"
 />
 
-
 {/* 🔗 Link selected text */}
 <button
   onClick={() => {
-    const targetId = prompt(
+    let targetId = prompt(
       "Enter linked story/theme ID (e.g. story/abc123 or theme/xyz456):"
     );
     if (!targetId) return;
+
+    // ✅ Clean user input: remove accidental '@' or brackets
+    targetId = targetId.replace(/^@+/, "").replace(/\[|\]|\(|\)/g, "");
 
     const sel = selectionMap[i];
     if (!sel || sel.start === sel.end) {
@@ -673,6 +668,8 @@ useEffect(() => {
 
     const { start, end } = sel;
     const selectedText = ev.description.substring(start, end);
+
+    // ✅ Correct markdown format
     const linkedText = `[${selectedText}](@${targetId})`;
 
     const newDesc =
@@ -790,7 +787,6 @@ useEffect(() => {
   ✨ Generate Explainers for this Event
 </button>
 
-
               <label className="block text-sm text-gray-600 mb-1">
                 Importance
               </label>
@@ -839,7 +835,6 @@ useEffect(() => {
 >
   💾 Save Event
 </button>
-
 
               </div>
 

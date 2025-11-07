@@ -3,68 +3,92 @@ import React from "react";
 import { Link } from "react-router-dom";
 
 /**
- * Converts markdown-style links into clickable React Router or external <a> links.
- * Examples:
- *   [Title](@story/abc123)
- *   [Title](@theme/xyz456)
- *   [Title](https://example.com)
+ * Renders text that may contain:
+ * - [Label](@story/abc123)
+ * - [Label](@theme/xyz456)
+ * - [Reuters](https://reuters.com)
+ * into clickable links in the CMS.
  */
-export function renderLinkedText(text: string): React.ReactNode {
-  if (!text) return null;
+export function renderLinkedText(text: string) {
+  if (!text) return <span>{text}</span>;
 
-  const pattern =
+  // ✅ Fix nested GPT-style patterns like:
+  // [$34 billion ](@[US Tariff Saga 2025](@story/6Xp1NZb08do99XBaaIgV))
+  const cleaned = text.replace(
+    /\]\(@\[([^\]]+)\]\(@(story|theme)\/([A-Za-z0-9_-]+)\)\)/g,
+    "](@$2/$3)"
+  );
+
+  // Match [label](target)
+  const regex =
     /\[([^\]]+)\]\((@(?:story|theme)\/[A-Za-z0-9_-]+|https?:\/\/[^\s)]+)\)/g;
 
-  const parts: React.ReactNode[] = [];
+  type Node =
+    | { type: "text"; value: string }
+    | { type: "link"; label: string; target: string };
+
+  const nodes: Node[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
-  while ((match = pattern.exec(text)) !== null) {
+  while ((match = regex.exec(cleaned)) !== null) {
     const [full, label, target] = match;
-    const before = text.slice(lastIndex, match.index);
-    if (before) parts.push(<span key={lastIndex}>{before}</span>);
-
-    if (target.startsWith("@story/")) {
-      const id = target.replace("@story/", "");
-      parts.push(
-        <Link
-          key={match.index}
-          to={`/story/${id}`}
-          className="text-blue-600 hover:underline"
-        >
-          {label}
-        </Link>
-      );
-    } else if (target.startsWith("@theme/")) {
-      const id = target.replace("@theme/", "");
-      parts.push(
-        <Link
-          key={match.index}
-          to={`/theme/${id}`}
-          className="text-blue-600 hover:underline"
-        >
-          {label}
-        </Link>
-      );
-    } else {
-      parts.push(
-        <a
-          key={match.index}
-          href={target}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-blue-600 hover:underline"
-        >
-          {label}
-        </a>
-      );
-    }
-
+    const before = cleaned.slice(lastIndex, match.index);
+    if (before) nodes.push({ type: "text", value: before });
+    nodes.push({ type: "link", label, target });
     lastIndex = match.index + full.length;
   }
 
-  if (lastIndex < text.length)
-    parts.push(<span key="end">{text.slice(lastIndex)}</span>);
+  if (lastIndex < cleaned.length) {
+    nodes.push({ type: "text", value: cleaned.slice(lastIndex) });
+  }
 
-  return <>{parts}</>;
+  return (
+    <span style={{ display: "inline", flexWrap: "wrap", lineHeight: "1.6" }}>
+      {nodes.map((n, i) => {
+        if (n.type === "text") {
+          return <span key={i}>{n.value}</span>;
+        }
+
+        const { label, target } = n;
+        const isInternal =
+          target.startsWith("@story/") || target.startsWith("@theme/");
+        const isTheme = target.startsWith("@theme/");
+        const id = isInternal ? target.split("/")[1] : "";
+
+        if (isInternal) {
+          return (
+            <Link
+              key={i}
+              to={`/${isTheme ? "themes" : "stories"}/${id}`}
+              style={{
+                color: "#2563EB",
+                textDecoration: "underline",
+                marginRight: 2,
+              }}
+            >
+              {label}
+            </Link>
+          );
+        }
+
+        // External link
+        return (
+          <a
+            key={i}
+            href={target}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              color: "#2563EB",
+              textDecoration: "underline",
+              marginRight: 2,
+            }}
+          >
+            {label}
+          </a>
+        );
+      })}
+    </span>
+  );
 }
