@@ -61,6 +61,13 @@ export interface AnalysisSection {
   [key: string]: any; // for dynamic UI safety
 }
 
+export interface TimelinePhase {
+  title: string;
+  description?: string;
+  events: TimelineEvent[];
+}
+
+
 // ---------------------------
 // 🔹 Main Draft Schema
 // ---------------------------
@@ -93,6 +100,8 @@ export interface Draft {
   slug: string;
   editorNotes?: string;
   updatedAt?: any;
+    usePhasedTimeline?: boolean; // toggle for enabling phases
+  phases?: TimelinePhase[];    // AI-generated or manual grouping
 }
 
 // ---------------------------

@@ -24,8 +24,6 @@ import {
 import { fetchEventCoverage } from "../api/fetchEventCoverage";
 import { renderLinkedText } from "../utils/renderLinkedText.tsx";
 
-
-
 export default function EditDraft() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -36,9 +34,8 @@ export default function EditDraft() {
   const [publishing, setPublishing] = useState(false);
   const [unsaved, setUnsaved] = useState(false);
   const [selectionMap, setSelectionMap] = useState<
-  Record<number, { start: number; end: number }>
->({});
-
+    Record<number, { start: number; end: number }>
+  >({});
 
   const [imageOptions, setImageOptions] = useState<string[]>([]);
   const [showImagePicker, setShowImagePicker] = useState(false);
@@ -57,6 +54,8 @@ export default function EditDraft() {
     imageUrl: "",
     sourceLink: "",
   });
+
+  const [activePhaseIndex, setActivePhaseIndex] = useState<number | null>(null);
 
   // ----------------------------
   // LOAD DRAFT
@@ -77,19 +76,17 @@ export default function EditDraft() {
     load();
   }, [id]);
 
-  
-
   // Warn user if there are unsaved changes
-useEffect(() => {
-  const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-    if (unsaved) {
-      e.preventDefault();
-      e.returnValue = "";
-    }
-  };
-  window.addEventListener("beforeunload", handleBeforeUnload);
-  return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-}, [unsaved]);
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (unsaved) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [unsaved]);
 
   // ----------------------------
   // METADATA HANDLERS
@@ -147,7 +144,7 @@ useEffect(() => {
     setLoadingTimeline(true);
     try {
       const timeline = await generateTimeline(draft);
-      await updateDraft(id, { timeline });
+      await updateDraft(id, { timeline, usePhasedTimeline: false });
       const updated = await fetchDraft(id);
       setDraft(updated);
       alert("✅ Timeline generated successfully!");
@@ -259,15 +256,10 @@ useEffect(() => {
       {/* HEADER */}
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-3xl font-bold">Edit Draft</h1>
-        {unsaved && (
-  <p className="text-yellow-600 text-sm mt-1">⚠️ You have unsaved changes</p>
-)}
+        {unsaved && <p className="text-yellow-600 text-sm mt-1">⚠️ You have unsaved changes</p>}
 
         <div className="flex gap-3">
-          <button
-            onClick={() => navigate(-1)}
-            className="text-blue-600 hover:underline"
-          >
+          <button onClick={() => navigate(-1)} className="text-blue-600 hover:underline">
             ← Back
           </button>
           <button
@@ -291,10 +283,9 @@ useEffect(() => {
             {publishing
               ? "Publishing…"
               : draft?.type === "Story"
-                ? "✅ Publish Story"
-                : "✅ Publish Theme"}
+              ? "✅ Publish Story"
+              : "✅ Publish Theme"}
           </button>
-
         </div>
       </div>
 
@@ -351,20 +342,18 @@ useEffect(() => {
                   try {
                     if (url.startsWith("http")) {
                       const origin = new URL(url).origin;
-                      e.currentTarget.src = `${origin}/favicon.ico`;
+                      (e.currentTarget as HTMLImageElement).src = `${origin}/favicon.ico`;
                     } else {
-                      e.currentTarget.src =
+                      (e.currentTarget as HTMLImageElement).src =
                         "https://via.placeholder.com/150x100?text=No+Image";
                     }
                   } catch {
-                    e.currentTarget.src =
+                    (e.currentTarget as HTMLImageElement).src =
                       "https://via.placeholder.com/150x100?text=No+Image";
                   }
                 }}
               />
-              <p className="text-gray-600 text-sm">
-                Preview of your main thumbnail
-              </p>
+              <p className="text-gray-600 text-sm">Preview of your main thumbnail</p>
             </div>
           )}
 
@@ -379,125 +368,140 @@ useEffect(() => {
           />
         </div>
 
-        {/* 🧭 Depth Toggle Setting */}
-<div className="flex items-center gap-2 mt-4">
-  <input
-    type="checkbox"
-    id="disableDepthToggle"
-    checked={draft.disableDepthToggle || false}
-    onChange={async (e) => {
-      const checked = e.target.checked;
-      setDraft({ ...draft, disableDepthToggle: checked });
-      if (id) {
-        try {
-          await updateDraft(id, { disableDepthToggle: checked });
-          console.log("✅ disableDepthToggle updated to:", checked);
-        } catch (err) {
-          console.error("❌ Failed to update disableDepthToggle:", err);
-          alert("❌ Failed to update disableDepthToggle.");
-        }
-      }
-    }}
-    className="w-4 h-4"
-  />
-  <label htmlFor="disableDepthToggle" className="text-sm text-gray-700">
-    Disable Depth Toggle in App
-  </label>
-</div>
+        {/* 🧭 Use Phased Timeline */}
+        <div className="flex items-center gap-2 mt-2">
+          <input
+            type="checkbox"
+            id="usePhasedTimeline"
+            checked={draft.usePhasedTimeline || false}
+            onChange={async (e) => {
+              const checked = e.target.checked;
+              setDraft({ ...draft, usePhasedTimeline: checked });
+              if (id) await updateDraft(id, { usePhasedTimeline: checked });
+            }}
+            className="w-4 h-4"
+          />
+          <label htmlFor="usePhasedTimeline" className="text-sm text-gray-700">
+            Enable Phased Timeline
+          </label>
+        </div>
 
+        {/* 🧭 Depth Toggle Setting */}
+        <div className="flex items-center gap-2 mt-4">
+          <input
+            type="checkbox"
+            id="disableDepthToggle"
+            checked={draft.disableDepthToggle || false}
+            onChange={async (e) => {
+              const checked = e.target.checked;
+              setDraft({ ...draft, disableDepthToggle: checked });
+              if (id) {
+                try {
+                  await updateDraft(id, { disableDepthToggle: checked });
+                  console.log("✅ disableDepthToggle updated to:", checked);
+                } catch (err) {
+                  console.error("❌ Failed to update disableDepthToggle:", err);
+                  alert("❌ Failed to update disableDepthToggle.");
+                }
+              }
+            }}
+            className="w-4 h-4"
+          />
+          <label htmlFor="disableDepthToggle" className="text-sm text-gray-700">
+            Disable Depth Toggle in App
+          </label>
+        </div>
 
         {/* 🧠 Context Explainers for Overview */}
-<div className="mt-6">
-  <h3 className="text-lg font-semibold mb-2">Context Explainers (Overview)</h3>
-  <p className="text-sm text-gray-500 mb-3">
-    Add terms that will be highlighted in the overview for reader context.
-  </p>
+        <div className="mt-6">
+          <h3 className="text-lg font-semibold mb-2">Context Explainers (Overview)</h3>
+          <p className="text-sm text-gray-500 mb-3">
+            Add terms that will be highlighted in the overview for reader context.
+          </p>
 
-  {(draft.contexts || []).map((ctx, i) => (
-    <div key={i} className="flex gap-2 items-center mb-2">
-      <input
-        type="text"
-        value={ctx.term}
-        onChange={(e) => {
-          const updated = [...(draft.contexts || [])];
-          updated[i].term = e.target.value;
-          setDraft({ ...draft, contexts: updated });
-        }}
-        placeholder="Term"
-        className="border p-2 rounded flex-1"
-      />
-      <input
-        type="text"
-        value={ctx.explainer}
-        onChange={(e) => {
-          const updated = [...(draft.contexts || [])];
-          updated[i].explainer = e.target.value;
-          setDraft({ ...draft, contexts: updated });
-        }}
-        placeholder="Explainer"
-        className="border p-2 rounded flex-[2]"
-      />
-      <button
-        onClick={() => {
-          const updated = (draft.contexts || []).filter((_, j) => j !== i);
-          setDraft({ ...draft, contexts: updated });
-        }}
-        className="text-red-500 text-sm hover:underline"
-      >
-        ✖
-      </button>
-    </div>
-  ))}
+          {(draft.contexts || []).map((ctx, i) => (
+            <div key={i} className="flex gap-2 items-center mb-2">
+              <input
+                type="text"
+                value={ctx.term}
+                onChange={(e) => {
+                  const updated = [...(draft.contexts || [])];
+                  updated[i].term = e.target.value;
+                  setDraft({ ...draft, contexts: updated });
+                }}
+                placeholder="Term"
+                className="border p-2 rounded flex-1"
+              />
+              <input
+                type="text"
+                value={ctx.explainer}
+                onChange={(e) => {
+                  const updated = [...(draft.contexts || [])];
+                  updated[i].explainer = e.target.value;
+                  setDraft({ ...draft, contexts: updated });
+                }}
+                placeholder="Explainer"
+                className="border p-2 rounded flex-[2]"
+              />
+              <button
+                onClick={() => {
+                  const updated = (draft.contexts || []).filter((_, j) => j !== i);
+                  setDraft({ ...draft, contexts: updated });
+                }}
+                className="text-red-500 text-sm hover:underline"
+              >
+                ✖
+              </button>
+            </div>
+          ))}
 
-  <button
-    onClick={() =>
-      setDraft({
-        ...draft,
-        contexts: [...(draft.contexts || []), { term: "", explainer: "" }],
-      })
-    }
-    className="text-blue-600 text-sm hover:underline"
-  >
-    ➕ Add new context term
-  </button>
-</div>
+          <button
+            onClick={() =>
+              setDraft({
+                ...draft,
+                contexts: [...(draft.contexts || []), { term: "", explainer: "" }],
+              })
+            }
+            className="text-blue-600 text-sm hover:underline"
+          >
+            ➕ Add new context term
+          </button>
+        </div>
 
-{/* ✨ GPT Auto-suggest */}
-<button
-  onClick={async () => {
-    if (!draft.overview) {
-      alert("Please write an overview first!");
-      return;
-    }
-    try {
-      const confirm = window.confirm("Use GPT to suggest contextual explainers?");
-      if (!confirm) return;
+        {/* ✨ GPT Auto-suggest */}
+        <button
+          onClick={async () => {
+            if (!draft.overview) {
+              alert("Please write an overview first!");
+              return;
+            }
+            try {
+              const confirm = window.confirm("Use GPT to suggest contextual explainers?");
+              if (!confirm) return;
 
-      // Optional loading flag
-      setSaving(true);
-      const { generateContexts } = await import("../utils/gptHelpers");
-      const suggested = await generateContexts(draft.overview);
+              setSaving(true);
+              const { generateContexts } = await import("../utils/gptHelpers");
+              const suggested = await generateContexts(draft.overview);
 
-      if (!suggested || suggested.length === 0) {
-        alert("No terms found.");
-        return;
-      }
+              if (!suggested || suggested.length === 0) {
+                alert("No terms found.");
+                return;
+              }
 
-      const merged = [...(draft.contexts || []), ...suggested];
-      setDraft({ ...draft, contexts: merged });
-      alert(`✅ Added ${suggested.length} suggested context terms.`);
-    } catch (err: any) {
-      console.error("❌ GPT error:", err);
-      alert("Failed to fetch GPT suggestions. Check console.");
-    } finally {
-      setSaving(false);
-    }
-  }}
-  className="text-purple-600 text-sm hover:underline mt-2"
->
-  ✨ Suggest Contexts with GPT
-</button>
-
+              const merged = [...(draft.contexts || []), ...suggested];
+              setDraft({ ...draft, contexts: merged });
+              alert(`✅ Added ${suggested.length} suggested context terms.`);
+            } catch (err: any) {
+              console.error("❌ GPT error:", err);
+              alert("Failed to fetch GPT suggestions. Check console.");
+            } finally {
+              setSaving(false);
+            }
+          }}
+          className="text-purple-600 text-sm hover:underline mt-2"
+        >
+          ✨ Suggest Contexts with GPT
+        </button>
 
         <button
           onClick={saveMetadata}
@@ -508,444 +512,760 @@ useEffect(() => {
         </button>
       </div>
 
-      
-
-      
-
       {/* TIMELINE */}
-<div className="bg-white p-6 rounded-lg shadow">
-  <div className="flex justify-between items-center mb-4">
-    <h2 className="text-xl font-semibold">Chronology of Events</h2>
+      {draft.usePhasedTimeline ? (
+        // 🧩 PHASED TIMELINE BUILDER
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">Phased Chronology</h2>
 
-    <div className="flex gap-3 items-center">
-      {/* 🧠 Generate Timeline */}
-      <button
-        onClick={handleGenerateTimeline}
-        disabled={loadingTimeline}
-        className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-      >
-        {loadingTimeline ? "Generating…" : "🧠 Generate Timeline"}
-      </button>
-
-      {/* ➕ Add Event */}
-      <button
-        onClick={async () => {
-          const newItem = {
-            date: "",
-            event: "",
-            description: "",
-            significance: 1,
-            imageUrl: "",
-            sourceLink: "",
-            sources: [],
-          };
-          const updatedTimeline = [...(draft.timeline || []), newItem];
-          setDraft({ ...draft, timeline: updatedTimeline });
-
-          // ✅ Optional Enhancement: Auto-save to Firestore
-          if (id) {
-            try {
-              await updateDraft(id, { timeline: updatedTimeline });
-              console.log("✅ New event added and saved to Firestore.");
-            } catch (err) {
-              console.error("❌ Failed to save new event:", err);
-              alert("❌ Failed to save new event.");
-            }
-          }
-        }}
-        className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
-      >
-        ➕ Add Event
-      </button>
-
-      {/* 💾 Save Timeline */}
-<button
-  onClick={async () => {
-    if (!id || !draft) return;
-    try {
-      setSaving(true);
-      await updateDraft(id, { timeline: draft.timeline });
-      setUnsaved(false);
-      alert("✅ Timeline saved successfully!");
-    } catch (err) {
-      console.error("❌ Timeline save failed:", err);
-      alert("❌ Failed to save timeline.");
-    } finally {
-      setSaving(false);
-    }
-  }}
-  className="px-3 py-1 bg-yellow-600 text-white rounded hover:bg-yellow-700 text-sm"
->
-  💾 Save Timeline
-</button>
-
-      {/* 👁️ Toggle Show/Hide */}
-      <button
-        onClick={() => setShowTimeline(!showTimeline)}
-        className="text-sm text-blue-600 hover:underline"
-      >
-        {showTimeline ? "Hide" : "Show"}
-      </button>
-    </div>
-  </div>
-
-  {showTimeline && (
-    <>
-      {draft.timeline.length === 0 ? (
-        <p className="text-gray-500 mb-3">No events yet.</p>
-      ) : (
-        <div className="space-y-4 mb-4">
-          {draft.timeline.map((ev, i) => (
-            <div key={i} className="border p-3 rounded">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
-                <input
-                  value={ev.date}
-                  onChange={(e) =>
-                    handleUpdateEvent(i, "date", e.target.value)
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  if (!id || !draft) return;
+                  try {
+                    setLoadingTimeline(true);
+                    const { generatePhasedTimeline } = await import("../utils/gptHelpers");
+                    const phases = await generatePhasedTimeline(draft);
+                    await updateDraft(id, { phases, usePhasedTimeline: true });
+                    const updated = await fetchDraft(id);
+                    setDraft(updated);
+                    alert("✅ Phased timeline generated successfully!");
+                  } catch (err) {
+                    console.error(err);
+                    alert("❌ Failed to generate phased timeline.");
+                  } finally {
+                    setLoadingTimeline(false);
                   }
-                  placeholder="Date"
-                  className="border p-2 rounded"
-                />
+                }}
+                className="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+              >
+                🧩 Generate Phased Timeline
+              </button>
+
+              <button
+                onClick={() => {
+                  const newPhase: any = { title: "", description: "", events: [] };
+                  setDraft({ ...draft, phases: [...(draft.phases || []), newPhase] });
+                }}
+                className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+              >
+                ➕ Add Phase
+              </button>
+            </div>
+          </div>
+
+          {/* List of Phases */}
+          {(draft.phases || []).map((phase: any, pIdx: number) => (
+            <div key={pIdx} className="border rounded-lg p-4 mb-4 bg-gray-50">
+              {/* Phase Header */}
+              <div className="flex justify-between items-center mb-2">
                 <input
-                  value={ev.event}
-                  onChange={(e) =>
-                    handleUpdateEvent(i, "event", e.target.value)
-                  }
-                  placeholder="Event"
-                  className="border p-2 rounded"
+                  type="text"
+                  value={phase.title}
+                  onChange={(e) => {
+                    const phases = [...(draft.phases || [])];
+                    phases[pIdx].title = e.target.value;
+                    setDraft({ ...draft, phases });
+                    setUnsaved(true);
+                  }}
+                  placeholder="Phase title"
+                  className="border p-2 rounded w-full font-semibold"
                 />
-                <input
-                  value={ev.imageUrl || ""}
-                  onChange={(e) =>
-                    handleUpdateEvent(i, "imageUrl", e.target.value)
-                  }
-                  placeholder="Image URL"
-                  className="border p-2 rounded"
-                />
-                {/* 🔗 Multiple Source Links */}
-<div className="space-y-2">
-  <label className="text-sm font-medium text-gray-700">Sources</label>
-
-  {(ev.sources || []).map((src, j) => (
-    <div key={j} className="flex gap-2 items-center">
-      <input
-        value={src.link}
-        onChange={(e) => {
-          const newSources = [...(ev.sources || [])];
-          newSources[j].link = e.target.value;
-          handleUpdateEvent(i, "sources", newSources);
-        }}
-        placeholder={`Source link #${j + 1}`}
-        className="border p-2 rounded w-full"
-      />
-      <button
-        onClick={() => {
-          const newSources = (ev.sources || []).filter((_, idx) => idx !== j);
-          handleUpdateEvent(i, "sources", newSources);
-        }}
-        className="text-red-600 text-sm hover:underline"
-      >
-        ✖
-      </button>
-    </div>
-  ))}
-
-  <button
-    onClick={() => {
-      const newSources = [...(ev.sources || []), { title: "", link: "", sourceName: "" }];
-      handleUpdateEvent(i, "sources", newSources);
-    }}
-    className="text-blue-600 text-sm hover:underline"
-  >
-    ➕ Add another link
-  </button>
-</div>
-
+                <button
+                  onClick={() => {
+                    const updated = (draft.phases || []).filter((_: any, i: number) => i !== pIdx);
+                    setDraft({ ...draft, phases: updated });
+                  }}
+                  className="ml-2 text-red-600 text-xs hover:underline"
+                >
+                  ✖
+                </button>
               </div>
 
               <textarea
-  value={ev.description}
-  onChange={(e) => {
-    handleUpdateEvent(i, "description", e.target.value);
-  }}
-  onSelect={(e) => {
-    const target = e.target as HTMLTextAreaElement;
-    setSelectionMap((prev) => ({
-      ...prev,
-      [i]: {
-        start: target.selectionStart,
-        end: target.selectionEnd,
-      },
-    }));
-  }}
-  placeholder="Description"
-  rows={2}
-  className="border p-2 rounded w-full mb-2"
-/>
+                value={phase.description || ""}
+                onChange={(e) => {
+                  const phases = [...(draft.phases || [])];
+                  phases[pIdx].description = e.target.value;
+                  setDraft({ ...draft, phases });
+                }}
+                placeholder="Phase description..."
+                rows={2}
+                className="border p-2 rounded w-full mb-3"
+              />
+{/* Phase Events */}
+{(phase.events || []).map((ev: any, i: number) => (
+  <div key={i} className="border p-3 rounded mb-3 bg-white">
+    {/* 🗓️ Date */}
+    <input
+      value={ev.date || ""}
+      onChange={(e) => {
+        const phases = [...(draft.phases || [])];
+        phases[pIdx].events[i].date = e.target.value;
+        setDraft({ ...draft, phases });
+      }}
+      placeholder="Date"
+      className="border p-2 rounded w-full mb-1"
+    />
 
-{/* 🔗 Link selected text */}
-<button
-  onClick={() => {
-    let targetId = prompt(
-      "Enter linked story/theme ID (e.g. story/abc123 or theme/xyz456):"
-    );
-    if (!targetId) return;
+    {/* 🧾 Title */}
+    <input
+      value={ev.event || ""}
+      onChange={(e) => {
+        const phases = [...(draft.phases || [])];
+        phases[pIdx].events[i].event = e.target.value;
+        setDraft({ ...draft, phases });
+      }}
+      placeholder="Event title"
+      className="border p-2 rounded w-full mb-1"
+    />
 
-    // ✅ Clean user input: remove accidental '@' or brackets
-    targetId = targetId.replace(/^@+/, "").replace(/\[|\]|\(|\)/g, "");
+    {/* 📝 Description */}
+    <textarea
+      value={ev.description || ""}
+      onChange={(e) => {
+        const phases = [...(draft.phases || [])];
+        phases[pIdx].events[i].description = e.target.value;
+        setDraft({ ...draft, phases });
+      }}
+      placeholder="Event description"
+      rows={2}
+      className="border p-2 rounded w-full mb-1"
+    />
 
-    const sel = selectionMap[i];
-    if (!sel || sel.start === sel.end) {
-      alert("Select a term in the description box first, then click Link.");
-      return;
-    }
+                  {/* Significance */}
+                  <label className="block text-sm text-gray-600 mb-1">Significance</label>
+                  <select
+                    value={ev.significance}
+                    onChange={(e) => {
+                      const phases = [...(draft.phases || [])];
+                      phases[pIdx].events[i].significance = Number(e.target.value);
+                      setDraft({ ...draft, phases });
+                    }}
+                    className="border p-2 rounded mb-2"
+                  >
+                    <option value={1}>Low</option>
+                    <option value={2}>Medium</option>
+                    <option value={3}>High</option>
+                  </select>
 
-    const { start, end } = sel;
-    const selectedText = ev.description.substring(start, end);
+                  {/* Context terms for this event (phased) */}
+                  <div className="mt-2">
+                    <h4 className="text-sm font-medium mb-1">Context Explainers</h4>
+                    {(ev.contexts || []).map((ctx: any, j: number) => (
+                      <div key={j} className="flex gap-2 items-center mb-1">
+                        <input
+                          type="text"
+                          value={ctx.term}
+                          onChange={(e) => {
+                            const phases = [...(draft.phases || [])];
+                            (phases[pIdx].events[i].contexts ||= [])[j] = {
+  ...(phases[pIdx].events[i].contexts?.[j] || {}),
+  term: e.target.value,
+};
 
-    // ✅ Correct markdown format
-    const linkedText = `[${selectedText}](@${targetId})`;
+                            setDraft({ ...draft, phases });
+                          }}
+                          placeholder="Term"
+                          className="border p-1 rounded flex-1"
+                        />
+                        <input
+                          type="text"
+                          value={ctx.explainer}
+                          onChange={(e) => {
+                            const phases = [...(draft.phases || [])];
+                            (phases[pIdx].events[i].contexts ||= [])[j] = {
+  ...(phases[pIdx].events[i].contexts?.[j] || {}),
+  explainer: e.target.value,
+};
 
-    const newDesc =
-      ev.description.substring(0, start) +
-      linkedText +
-      ev.description.substring(end);
-
-    const updatedTimeline = [...draft.timeline];
-    updatedTimeline[i] = { ...ev, description: newDesc };
-    setDraft({ ...draft, timeline: updatedTimeline });
-    setUnsaved(true);
-  }}
-  className="text-blue-600 text-xs hover:underline mb-2"
->
-  🔗 Link selected text
-</button>
-
-{/* Preview of description with clickable links */}
-<div className="text-sm text-gray-700 mt-2">
-  {renderLinkedText(ev.description)}
-</div>
-
-              {/* 🧠 Context Explainers for this Event */}
-<div className="mt-2">
-  <h4 className="text-sm font-medium mb-1">Context Explainers</h4>
-  {(ev.contexts || []).map((ctx, j) => (
-    <div key={j} className="flex gap-2 items-center mb-1">
-      <input
-        type="text"
-        value={ctx.term}
-        onChange={(e) => {
-          const newContexts = [...(ev.contexts || [])];
-          newContexts[j].term = e.target.value;
-          handleUpdateEvent(i, "contexts", newContexts);
-        }}
-        placeholder="Term"
-        className="border p-1 rounded flex-1"
-      />
-      <input
-        type="text"
-        value={ctx.explainer}
-        onChange={(e) => {
-          const newContexts = [...(ev.contexts || [])];
-          newContexts[j].explainer = e.target.value;
-          handleUpdateEvent(i, "contexts", newContexts);
-        }}
-        placeholder="Explainer"
-        className="border p-1 rounded flex-[2]"
-      />
-      <button
-        onClick={() => {
-          const newContexts = (ev.contexts || []).filter((_, k) => k !== j);
-          handleUpdateEvent(i, "contexts", newContexts);
-        }}
-        className="text-red-600 text-xs hover:underline"
-      >
-        ✖
-      </button>
-    </div>
-  ))}
-  <button
-    onClick={() => {
-      const newContexts = [...(ev.contexts || []), { term: "", explainer: "" }];
-      handleUpdateEvent(i, "contexts", newContexts);
-    }}
-    className="text-blue-600 text-xs hover:underline"
-  >
-    ➕ Add term
-  </button>
-</div>
-
-{/* ✨ GPT Context Auto-Suggest for this Event */}
-<button
-  onClick={async () => {
-    try {
-      setSaving(true);
-      const suggested = await generateContextsForTimelineEvent(ev);
-      if (!suggested?.length) {
-        alert("No contextual terms found for this event.");
-        return;
-      }
-
-      const merged = [...(ev.contexts || []), ...suggested];
-      handleUpdateEvent(i, "contexts", merged);
-      alert(`✅ Added ${suggested.length} contextual explainers for this event.`);
-    } catch (err) {
-      console.error("GPT error (event contexts):", err);
-      alert("❌ Failed to generate contexts for this event.");
-    } finally {
-      setSaving(false);
-    }
-  }}
-  className="text-purple-600 text-xs hover:underline mt-1 block"
->
-  ✨ Suggest Contexts with GPT
-</button>
-
-
-{/* ✨ GPT Explainer Generator for this event */}
-<button
-  onClick={async () => {
-    const eventData = {
-      event: ev.event,
-      description: ev.description,
-      contexts: ev.contexts || [],
-    };
-
-    if (!eventData.contexts.length) {
-      alert("Please add at least one term first.");
-      return;
-    }
-
-    try {
-      setSaving(true);
-      const { generateExplainersForEvent } = await import("../utils/gptHelpers");
-      const suggested = await generateExplainersForEvent(eventData);
-
-      if (!suggested.length) {
-        alert("No explainers returned.");
-        return;
-      }
-
-      // Merge GPT explainers into event’s contexts
-      const merged = (eventData.contexts || []).map((ctx) => {
-        const found = suggested.find(
-          (s) => s.term.toLowerCase() === ctx.term.toLowerCase()
-        );
-        return found ? { ...ctx, explainer: found.explainer } : ctx;
-      });
-
-      handleUpdateEvent(i, "contexts", merged);
-      alert(`✅ Added ${suggested.length} explainers.`);
-    } catch (err: any) {
-      console.error("GPT error:", err);
-      alert("Failed to generate explainers for this event.");
-    } finally {
-      setSaving(false);
-    }
-  }}
-  className="text-purple-600 text-xs hover:underline mt-2 block"
->
-  ✨ Generate Explainers for this Event
-</button>
-
-              <label className="block text-sm text-gray-600 mb-1">
-                Importance
-              </label>
-              <select
-                value={ev.significance}
-                onChange={(e) =>
-                  handleUpdateEvent(i, "significance", Number(e.target.value))
-                }
-                className="border p-2 rounded mb-2"
-              >
-                <option value={1}>Low</option>
-                <option value={2}>Medium</option>
-                <option value={3}>High</option>
-              </select>
-
-              {/* Buttons */}
-              <div className="flex gap-4 items-center mt-2">
-                <button
-                  onClick={() => handleDeleteEvent(i)}
-                  className="text-red-600 text-sm hover:underline"
-                >
-                  Delete
-                </button>
-                <button
-                  onClick={() => handleFetchCoverage(i, ev)}
-                  className="text-blue-600 text-sm hover:underline"
-                >
-                  🔗 Fetch Top Sources
-                </button>
-                <button
-  onClick={async () => {
-    if (!id) return;
-    try {
-      setSaving(true);
-      await updateTimelineEvent(id, i, draft.timeline[i]);
-      setUnsaved(false);
-      alert("✅ Event saved!");
-    } catch (err) {
-      console.error(err);
-      alert("❌ Failed to save event.");
-    } finally {
-      setSaving(false);
-    }
-  }}
-  className="text-green-600 text-sm hover:underline"
->
-  💾 Save Event
-</button>
-
-              </div>
-
-              {/* Top Sources */}
-              {ev.sources && ev.sources.length > 0 && (
-                <div className="mt-3 border-t pt-2">
-                  <h4 className="text-sm font-semibold mb-2">Top Sources:</h4>
-                  <div className="space-y-2">
-                    {ev.sources.map((s: any, idx: number) => (
-                      <div
-                        key={idx}
-                        className="flex items-center space-x-3 border p-2 rounded-md hover:bg-gray-50"
-                      >
-                        {s.imageUrl && (
-                          <img
-                            src={s.imageUrl}
-                            alt={s.title}
-                            className="w-10 h-10 object-cover rounded"
-                            onError={(e) => {
-                              e.currentTarget.src = `${new URL(
-                                s.link
-                              ).origin}/favicon.ico`;
-                            }}
-                          />
-                        )}
-                        <div className="flex flex-col">
-                          <a
-                            href={s.link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-600 font-medium hover:underline"
-                          >
-                            {s.title}
-                          </a>
-                          <span className="text-gray-500 text-xs">
-                            {s.sourceName}
-                          </span>
-                        </div>
+                            setDraft({ ...draft, phases });
+                          }}
+                          placeholder="Explainer"
+                          className="border p-1 rounded flex-[2]"
+                        />
+                        <button
+                          onClick={() => {
+                            const phases = [...(draft.phases || [])];
+                            phases[pIdx].events[i].contexts = (ev.contexts || []).filter(
+                              (_: any, k: number) => k !== j
+                            );
+                            setDraft({ ...draft, phases });
+                          }}
+                          className="text-red-600 text-xs hover:underline"
+                        >
+                          ✖
+                        </button>
                       </div>
                     ))}
+                    <button
+                      onClick={() => {
+                        const phases = [...(draft.phases || [])];
+                        const list = phases[pIdx].events[i].contexts || [];
+                        phases[pIdx].events[i].contexts = [...list, { term: "", explainer: "" }];
+                        setDraft({ ...draft, phases });
+                      }}
+                      className="text-blue-600 text-xs hover:underline"
+                    >
+                      ➕ Add term
+                    </button>
                   </div>
+
+                  {/* ✨ GPT Context Auto-Suggest for phased event */}
+                  <button
+                    onClick={async () => {
+                      try {
+                        setSaving(true);
+                        const suggested = await generateContextsForTimelineEvent(ev);
+                        if (!suggested?.length) {
+                          alert("No contextual terms found for this event.");
+                          return;
+                        }
+                        const phases = [...(draft.phases || [])];
+                        const merged = [...(ev.contexts || []), ...suggested];
+                        phases[pIdx].events[i].contexts = merged;
+                        setDraft({ ...draft, phases });
+                        alert(
+                          `✅ Added ${suggested.length} contextual explainers for this event.`
+                        );
+                      } catch (err) {
+                        console.error("GPT error (event contexts):", err);
+                        alert("❌ Failed to generate contexts for this event.");
+                      } finally {
+                        setSaving(false);
+                      }
+                    }}
+                    className="text-purple-600 text-xs hover:underline mt-1 block"
+                  >
+                    ✨ Suggest Contexts with GPT
+                  </button>
+
+                  {/* ✨ GPT Explainer Generator for phased event */}
+                  <button
+                    onClick={async () => {
+                      const eventData = {
+                        event: ev.event,
+                        description: ev.description,
+                        contexts: ev.contexts || [],
+                      };
+
+                      if (!eventData.contexts.length) {
+                        alert("Please add at least one term first.");
+                        return;
+                      }
+
+                      try {
+                        setSaving(true);
+                        const suggested = await generateExplainersForEvent(eventData);
+
+                        if (!suggested.length) {
+                          alert("No explainers returned.");
+                          return;
+                        }
+
+                        const merged = (eventData.contexts || []).map((ctx: any) => {
+                          const found = suggested.find(
+                            (s: any) => s.term.toLowerCase() === ctx.term.toLowerCase()
+                          );
+                          return found ? { ...ctx, explainer: found.explainer } : ctx;
+                        });
+
+                        const phases = [...(draft.phases || [])];
+                        phases[pIdx].events[i].contexts = merged;
+                        setDraft({ ...draft, phases });
+                        alert(`✅ Added ${suggested.length} explainers.`);
+                      } catch (err: any) {
+                        console.error("GPT error:", err);
+                        alert("Failed to generate explainers for this event.");
+                      } finally {
+                        setSaving(false);
+                      }
+                    }}
+                    className="text-purple-600 text-xs hover:underline mt-2 block"
+                  >
+                    ✨ Generate Explainers for this Event
+                  </button>
+
+                  {/* Delete Event */}
+                  <button
+                    onClick={() => {
+                      const phases = [...(draft.phases || [])];
+                      phases[pIdx].events = phases[pIdx].events.filter((_: any, j: number) => j !== i);
+                      setDraft({ ...draft, phases });
+                    }}
+                    className="text-red-600 text-xs hover:underline mt-2"
+                  >
+                    🗑️ Delete Event
+                  </button>
                 </div>
-              )}
+              ))}
+
+              {/* Add Event */}
+              <button
+                onClick={() => {
+                  const newEvent: any = {
+                    date: "",
+                    event: "",
+                    description: "",
+                    significance: 1,
+                    imageUrl: "",
+                    sourceLink: "",
+                    sources: [],
+                    contexts: [],
+                  };
+                  const phases = [...(draft.phases || [])];
+                  phases[pIdx].events = [...(phase.events || []), newEvent];
+                  setDraft({ ...draft, phases });
+                }}
+                className="text-blue-600 text-sm hover:underline"
+              >
+                ➕ Add Event
+              </button>
             </div>
           ))}
+
+          {/* 💾 Save Button */}
+          <button
+            onClick={async () => {
+              if (!id) return;
+              await updateDraft(id, { phases: draft.phases });
+              alert("✅ Phased timeline saved!");
+            }}
+            className="mt-3 bg-yellow-600 text-white px-3 py-1 rounded hover:bg-yellow-700"
+          >
+            💾 Save Phased Timeline
+          </button>
+        </div>
+      ) : (
+        // 🕒 REGULAR TIMELINE (your original block preserved)
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">Chronology of Events</h2>
+
+            <div className="flex gap-3 items-center">
+              {/* 🧠 Generate Timeline */}
+              <button
+                onClick={handleGenerateTimeline}
+                disabled={loadingTimeline}
+                className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+              >
+                {loadingTimeline ? "Generating…" : "🧠 Generate Timeline"}
+              </button>
+
+              {/* ➕ Add Event */}
+              <button
+                onClick={async () => {
+                  const newItem = {
+                    date: "",
+                    event: "",
+                    description: "",
+                    significance: 1,
+                    imageUrl: "",
+                    sourceLink: "",
+                    sources: [],
+                  };
+                  const updatedTimeline = [...(draft.timeline || []), newItem];
+                  setDraft({ ...draft, timeline: updatedTimeline });
+
+                  // ✅ Optional Enhancement: Auto-save to Firestore
+                  if (id) {
+                    try {
+                      await updateDraft(id, { timeline: updatedTimeline });
+                      console.log("✅ New event added and saved to Firestore.");
+                    } catch (err) {
+                      console.error("❌ Failed to save new event:", err);
+                      alert("❌ Failed to save new event.");
+                    }
+                  }
+                }}
+                className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+              >
+                ➕ Add Event
+              </button>
+
+              {/* 💾 Save Timeline */}
+              <button
+                onClick={async () => {
+                  if (!id || !draft) return;
+                  try {
+                    setSaving(true);
+                    await updateDraft(id, { timeline: draft.timeline });
+                    setUnsaved(false);
+                    alert("✅ Timeline saved successfully!");
+                  } catch (err) {
+                    console.error("❌ Timeline save failed:", err);
+                    alert("❌ Failed to save timeline.");
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                className="px-3 py-1 bg-yellow-600 text-white rounded hover:bg-yellow-700 text-sm"
+              >
+                💾 Save Timeline
+              </button>
+
+              {/* 👁️ Toggle Show/Hide */}
+              <button
+                onClick={() => setShowTimeline(!showTimeline)}
+                className="text-sm text-blue-600 hover:underline"
+              >
+                {showTimeline ? "Hide" : "Show"}
+              </button>
+            </div>
+          </div>
+
+          {showTimeline && (
+            <>
+              {draft.timeline.length === 0 ? (
+                <p className="text-gray-500 mb-3">No events yet.</p>
+              ) : (
+                <div className="space-y-4 mb-4">
+                  {draft.timeline.map((ev, i) => (
+                    <div key={i} className="border p-3 rounded">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+                        <input
+                          value={ev.date}
+                          onChange={(e) => handleUpdateEvent(i, "date", e.target.value)}
+                          placeholder="Date"
+                          className="border p-2 rounded"
+                        />
+                        <input
+                          value={ev.event}
+                          onChange={(e) => handleUpdateEvent(i, "event", e.target.value)}
+                          placeholder="Event"
+                          className="border p-2 rounded"
+                        />
+                        <input
+                          value={ev.imageUrl || ""}
+                          onChange={(e) => handleUpdateEvent(i, "imageUrl", e.target.value)}
+                          placeholder="Image URL"
+                          className="border p-2 rounded"
+                        />
+                        {/* 🔗 Multiple Source Links */}
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-gray-700">Sources</label>
+
+                          {(ev.sources || []).map((src, j) => (
+                            <div key={j} className="flex gap-2 items-center">
+                              <input
+                                value={src.link}
+                                onChange={(e) => {
+                                  const newSources = [...(ev.sources || [])];
+                                  newSources[j].link = e.target.value;
+                                  handleUpdateEvent(i, "sources", newSources);
+                                }}
+                                placeholder={`Source link #${j + 1}`}
+                                className="border p-2 rounded w-full"
+                              />
+                              <button
+                                onClick={() => {
+                                  const newSources = (ev.sources || []).filter(
+                                    (_: any, idx: number) => idx !== j
+                                  );
+                                  handleUpdateEvent(i, "sources", newSources);
+                                }}
+                                className="text-red-600 text-sm hover:underline"
+                              >
+                                ✖
+                              </button>
+                            </div>
+                          ))}
+
+                          <button
+                            onClick={() => {
+                              const newSources = [
+                                ...(ev.sources || []),
+                                { title: "", link: "", sourceName: "" },
+                              ];
+                              handleUpdateEvent(i, "sources", newSources);
+                            }}
+                            className="text-blue-600 text-sm hover:underline"
+                          >
+                            ➕ Add another link
+                          </button>
+                        </div>
+                      </div>
+
+                      <textarea
+                        value={ev.description}
+                        onChange={(e) => {
+                          handleUpdateEvent(i, "description", e.target.value);
+                        }}
+                        onSelect={(e) => {
+                          const target = e.target as HTMLTextAreaElement;
+                          setSelectionMap((prev) => ({
+                            ...prev,
+                            [i]: {
+                              start: target.selectionStart,
+                              end: target.selectionEnd,
+                            },
+                          }));
+                        }}
+                        placeholder="Description"
+                        rows={2}
+                        className="border p-2 rounded w-full mb-2"
+                      />
+
+                      {/* 🔗 Link selected text */}
+                      <button
+                        onClick={() => {
+                          let targetId = prompt(
+                            "Enter linked story/theme ID (e.g. story/abc123 or theme/xyz456):"
+                          );
+                          if (!targetId) return;
+
+                          // ✅ Clean user input: remove accidental '@' or brackets
+                          targetId = targetId.replace(/^@+/, "").replace(/\[|\]|\(|\)/g, "");
+
+                          const sel = selectionMap[i];
+                          if (!sel || sel.start === sel.end) {
+                            alert("Select a term in the description box first, then click Link.");
+                            return;
+                          }
+
+                          const { start, end } = sel;
+                          const selectedText = ev.description.substring(start, end);
+
+                          // ✅ Correct markdown format
+                          const linkedText = `[${selectedText}](@${targetId})`;
+
+                          const newDesc =
+                            ev.description.substring(0, start) +
+                            linkedText +
+                            ev.description.substring(end);
+
+                          const updatedTimeline = [...draft.timeline];
+                          updatedTimeline[i] = { ...ev, description: newDesc };
+                          setDraft({ ...draft, timeline: updatedTimeline });
+                          setUnsaved(true);
+                        }}
+                        className="text-blue-600 text-xs hover:underline mb-2"
+                      >
+                        🔗 Link selected text
+                      </button>
+
+                      {/* Preview of description with clickable links */}
+                      <div className="text-sm text-gray-700 mt-2">{renderLinkedText(ev.description)}</div>
+
+                      {/* 🧠 Context Explainers for this Event */}
+                      <div className="mt-2">
+                        <h4 className="text-sm font-medium mb-1">Context Explainers</h4>
+                        {(ev.contexts || []).map((ctx, j) => (
+                          <div key={j} className="flex gap-2 items-center mb-1">
+                            <input
+                              type="text"
+                              value={ctx.term}
+                              onChange={(e) => {
+                                const newContexts = [...(ev.contexts || [])];
+                                newContexts[j].term = e.target.value;
+                                handleUpdateEvent(i, "contexts", newContexts);
+                              }}
+                              placeholder="Term"
+                              className="border p-1 rounded flex-1"
+                            />
+                            <input
+                              type="text"
+                              value={ctx.explainer}
+                              onChange={(e) => {
+                                const newContexts = [...(ev.contexts || [])];
+                                newContexts[j].explainer = e.target.value;
+                                handleUpdateEvent(i, "contexts", newContexts);
+                              }}
+                              placeholder="Explainer"
+                              className="border p-1 rounded flex-[2]"
+                            />
+                            <button
+                              onClick={() => {
+                                const newContexts = (ev.contexts || []).filter(
+                                  (_: any, k: number) => k !== j
+                                );
+                                handleUpdateEvent(i, "contexts", newContexts);
+                              }}
+                              className="text-red-600 text-xs hover:underline"
+                            >
+                              ✖
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          onClick={() => {
+                            const newContexts = [...(ev.contexts || []), { term: "", explainer: "" }];
+                            handleUpdateEvent(i, "contexts", newContexts);
+                          }}
+                          className="text-blue-600 text-xs hover:underline"
+                        >
+                          ➕ Add term
+                        </button>
+                      </div>
+
+                      {/* ✨ GPT Context Auto-Suggest for this Event */}
+                      <button
+                        onClick={async () => {
+                          try {
+                            setSaving(true);
+                            const suggested = await generateContextsForTimelineEvent(ev);
+                            if (!suggested?.length) {
+                              alert("No contextual terms found for this event.");
+                              return;
+                            }
+
+                            const merged = [...(ev.contexts || []), ...suggested];
+                            handleUpdateEvent(i, "contexts", merged);
+                            alert(
+                              `✅ Added ${suggested.length} contextual explainers for this event.`
+                            );
+                          } catch (err) {
+                            console.error("GPT error (event contexts):", err);
+                            alert("❌ Failed to generate contexts for this event.");
+                          } finally {
+                            setSaving(false);
+                          }
+                        }}
+                        className="text-purple-600 text-xs hover:underline mt-1 block"
+                      >
+                        ✨ Suggest Contexts with GPT
+                      </button>
+
+                      {/* ✨ GPT Explainer Generator for this event */}
+                      <button
+                        onClick={async () => {
+                          const eventData = {
+                            event: ev.event,
+                            description: ev.description,
+                            contexts: ev.contexts || [],
+                          };
+
+                          if (!eventData.contexts.length) {
+                            alert("Please add at least one term first.");
+                            return;
+                          }
+
+                          try {
+                            setSaving(true);
+                            const suggested = await generateExplainersForEvent(eventData);
+
+                            if (!suggested.length) {
+                              alert("No explainers returned.");
+                              return;
+                            }
+
+                            // Merge GPT explainers into event’s contexts
+                            const merged = (eventData.contexts || []).map((ctx) => {
+                              const found = suggested.find(
+                                (s) => s.term.toLowerCase() === ctx.term.toLowerCase()
+                              );
+                              return found ? { ...ctx, explainer: found.explainer } : ctx;
+                            });
+
+                            handleUpdateEvent(i, "contexts", merged);
+                            alert(`✅ Added ${suggested.length} explainers.`);
+                          } catch (err: any) {
+                            console.error("GPT error:", err);
+                            alert("Failed to generate explainers for this event.");
+                          } finally {
+                            setSaving(false);
+                          }
+                        }}
+                        className="text-purple-600 text-xs hover:underline mt-2 block"
+                      >
+                        ✨ Generate Explainers for this Event
+                      </button>
+
+                      <label className="block text-sm text-gray-600 mb-1">Importance</label>
+                      <select
+                        value={ev.significance}
+                        onChange={(e) =>
+                          handleUpdateEvent(i, "significance", Number(e.target.value))
+                        }
+                        className="border p-2 rounded mb-2"
+                      >
+                        <option value={1}>Low</option>
+                        <option value={2}>Medium</option>
+                        <option value={3}>High</option>
+                      </select>
+
+                      {/* Buttons */}
+                      <div className="flex gap-4 items-center mt-2">
+                        <button
+                          onClick={() => handleDeleteEvent(i)}
+                          className="text-red-600 text-sm hover:underline"
+                        >
+                          Delete
+                        </button>
+                        <button
+                          onClick={() => handleFetchCoverage(i, ev)}
+                          className="text-blue-600 text-sm hover:underline"
+                        >
+                          🔗 Fetch Top Sources
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!id) return;
+                            try {
+                              setSaving(true);
+                              await updateTimelineEvent(id, i, draft.timeline[i]);
+                              setUnsaved(false);
+                              alert("✅ Event saved!");
+                            } catch (err) {
+                              console.error(err);
+                              alert("❌ Failed to save event.");
+                            } finally {
+                              setSaving(false);
+                            }
+                          }}
+                          className="text-green-600 text-sm hover:underline"
+                        >
+                          💾 Save Event
+                        </button>
+                      </div>
+
+                      {/* Top Sources */}
+                      {ev.sources && ev.sources.length > 0 && (
+                        <div className="mt-3 border-t pt-2">
+                          <h4 className="text-sm font-semibold mb-2">Top Sources:</h4>
+                          <div className="space-y-2">
+                            {ev.sources.map((s: any, idx: number) => (
+                              <div
+                                key={idx}
+                                className="flex items-center space-x-3 border p-2 rounded-md hover:bg-gray-50"
+                              >
+                                {s.imageUrl && (
+                                  <img
+                                    src={s.imageUrl}
+                                    alt={s.title}
+                                    className="w-10 h-10 object-cover rounded"
+                                    onError={(e) => {
+                                      (e.currentTarget as HTMLImageElement).src = `${new URL(
+                                        s.link
+                                      ).origin}/favicon.ico`;
+                                    }}
+                                  />
+                                )}
+                                <div className="flex flex-col">
+                                  <a
+                                    href={s.link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 font-medium hover:underline"
+                                  >
+                                    {s.title}
+                                  </a>
+                                  <span className="text-gray-500 text-xs">{s.sourceName}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
-    </>
-  )}
-</div>
 
       {/* ANALYSIS */}
       <div className="bg-white p-6 rounded-lg shadow">
@@ -1002,43 +1322,45 @@ useEffect(() => {
                     </button>
 
                     {/* ✨ GPT Suggest Contexts for Analysis Section */}
-<button
-  onClick={async () => {
-    const sectionItems = draft.analysis?.[sectionKey] || [];
-    if (!sectionItems.length) {
-      alert("No items to analyze yet.");
-      return;
-    }
+                    <button
+                      onClick={async () => {
+                        const sectionItems = draft.analysis?.[sectionKey] || [];
+                        if (!sectionItems.length) {
+                          alert("No items to analyze yet.");
+                          return;
+                        }
 
-    try {
-      setSaving(true);
-      const suggested = await generateContextsForAnalysis(sectionKey, sectionItems);
-      if (!suggested?.length) {
-        alert("No contextual terms found.");
-        return;
-      }
+                        try {
+                          setSaving(true);
+                          const suggested = await generateContextsForAnalysis(
+                            sectionKey,
+                            sectionItems
+                          );
+                          if (!suggested?.length) {
+                            alert("No contextual terms found.");
+                            return;
+                          }
 
-      const mergedContexts = [...(draft.contexts || []), ...suggested];
-      setDraft({ ...draft, contexts: mergedContexts });
-      alert(`✅ Added ${suggested.length} contextual explainers from ${sectionKey}.`);
-    } catch (err) {
-      console.error("GPT error (analysis contexts):", err);
-      alert("❌ Failed to generate analysis contexts.");
-    } finally {
-      setSaving(false);
-    }
-  }}
-  className="text-purple-600 text-xs hover:underline mt-1 block"
->
-  ✨ Suggest Contexts with GPT
-</button>
-
+                          const mergedContexts = [...(draft.contexts || []), ...suggested];
+                          setDraft({ ...draft, contexts: mergedContexts });
+                          alert(
+                            `✅ Added ${suggested.length} contextual explainers from ${sectionKey}.`
+                          );
+                        } catch (err) {
+                          console.error("GPT error (analysis contexts):", err);
+                          alert("❌ Failed to generate analysis contexts.");
+                        } finally {
+                          setSaving(false);
+                        }
+                      }}
+                      className="text-purple-600 text-xs hover:underline mt-1 block"
+                    >
+                      ✨ Suggest Contexts with GPT
+                    </button>
 
                     {/* Items list */}
                     {section.length === 0 ? (
-                      <p className="text-sm text-gray-500">
-                        No {labels[sectionKey]} yet.
-                      </p>
+                      <p className="text-sm text-gray-500">No {labels[sectionKey]} yet.</p>
                     ) : (
                       <ul className="space-y-2">
                         {section.map((item: any, idx: number) => (
@@ -1053,11 +1375,9 @@ useEffect(() => {
                                   value={item.name}
                                   onChange={(e) => {
                                     const updated = { ...draft };
-                                    (
-                                      (updated.analysis as Record<string, any>)[
-                                      sectionKey
-                                      ][idx]
-                                    ).name = e.target.value;
+                                    (updated.analysis as Record<string, any>)[sectionKey][
+                                      idx
+                                    ].name = e.target.value;
                                     setDraft(updated);
                                   }}
                                   placeholder="Name"
@@ -1067,11 +1387,9 @@ useEffect(() => {
                                   value={item.detail}
                                   onChange={(e) => {
                                     const updated = { ...draft };
-                                    (
-                                      (updated.analysis as Record<string, any>)[
-                                      sectionKey
-                                      ][idx]
-                                    ).detail = e.target.value;
+                                    (updated.analysis as Record<string, any>)[sectionKey][
+                                      idx
+                                    ].detail = e.target.value;
                                     setDraft(updated);
                                   }}
                                   placeholder="Detail"
@@ -1085,11 +1403,9 @@ useEffect(() => {
                                   value={item.question}
                                   onChange={(e) => {
                                     const updated = { ...draft };
-                                    (
-                                      (updated.analysis as Record<string, any>)[
-                                      sectionKey
-                                      ][idx]
-                                    ).question = e.target.value;
+                                    (updated.analysis as Record<string, any>)[sectionKey][
+                                      idx
+                                    ].question = e.target.value;
                                     setDraft(updated);
                                   }}
                                   placeholder="Question"
@@ -1099,11 +1415,9 @@ useEffect(() => {
                                   value={item.answer}
                                   onChange={(e) => {
                                     const updated = { ...draft };
-                                    (
-                                      (updated.analysis as Record<string, any>)[
-                                      sectionKey
-                                      ][idx]
-                                    ).answer = e.target.value;
+                                    (updated.analysis as Record<string, any>)[sectionKey][
+                                      idx
+                                    ].answer = e.target.value;
                                     setDraft(updated);
                                   }}
                                   placeholder="Answer"
@@ -1111,8 +1425,6 @@ useEffect(() => {
                                 />
                               </>
                             )}
-
-                        
 
                             {/* ❌ Delete button */}
                             <button
@@ -1141,24 +1453,24 @@ useEffect(() => {
           </div>
         )}
 
-              {/* 💾 Save button */}
-      <button
-        onClick={async () => {
-          if (!id) return;
-          try {
-            await updateDraft(id, { analysis: draft.analysis });
-            setUnsaved(false);
-            alert("✅ Analysis saved successfully!");
-          } catch (err: any) {
-            console.error(err);
-            alert("❌ Failed to save analysis: " + err.message);
-          }
-        }}
-        className="mt-4 bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
-      >
-        💾 Save Analysis
-         </button>
+        {/* 💾 Save button */}
+        <button
+          onClick={async () => {
+            if (!id) return;
+            try {
+              await updateDraft(id, { analysis: draft.analysis });
+              setUnsaved(false);
+              alert("✅ Analysis saved successfully!");
+            } catch (err: any) {
+              console.error(err);
+              alert("❌ Failed to save analysis: " + err.message);
+            }
+          }}
+          className="mt-4 bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
+        >
+          💾 Save Analysis
+        </button>
+      </div>
     </div>
-  </div>
-);
+  );
 }

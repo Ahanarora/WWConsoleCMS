@@ -266,3 +266,41 @@ Return ONLY valid JSON:
   const schema = `[{"term": "string", "explainer": "string"}]`;
   return await callOpenAI(prompt, schema);
 }
+
+/** 🧩 Generate Phased Timeline (AI groups events into broader phases) */
+export async function generatePhasedTimeline(
+  draft: Draft
+): Promise<{ title: string; description?: string; events: TimelineEvent[] }[]> {
+  const schema = `
+{
+  "phases": [
+    {
+      "title": "string",
+      "description": "string",
+      "events": [
+        { "date": "YYYY-MM-DD", "event": "string", "description": "string", "significance": 1|2|3 }
+      ]
+    }
+  ]
+}`;
+
+  const prompt = `
+You are a news timeline editor.
+
+From the overview and known chronology, organize key events into 3–5 major *phases* of the story.
+Each phase should have:
+- a clear title (like "Trump rolls out tariffs and chaos ensues")
+- a 1–2 sentence description summarizing that phase
+- a chronological subset of key events under it
+
+Topic: ${draft.title}
+
+Context:
+${draft.overview}
+
+Return valid JSON matching the schema above.
+`;
+
+  const result = await callOpenAI(prompt, schema);
+  return result.phases;
+}
