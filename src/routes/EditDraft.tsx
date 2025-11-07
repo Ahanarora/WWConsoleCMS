@@ -372,6 +372,33 @@ useEffect(() => {
           />
         </div>
 
+        {/* 🧭 Depth Toggle Setting */}
+<div className="flex items-center gap-2 mt-4">
+  <input
+    type="checkbox"
+    id="disableDepthToggle"
+    checked={draft.disableDepthToggle || false}
+    onChange={async (e) => {
+      const checked = e.target.checked;
+      setDraft({ ...draft, disableDepthToggle: checked });
+      if (id) {
+        try {
+          await updateDraft(id, { disableDepthToggle: checked });
+          console.log("✅ disableDepthToggle updated to:", checked);
+        } catch (err) {
+          console.error("❌ Failed to update disableDepthToggle:", err);
+          alert("❌ Failed to update disableDepthToggle.");
+        }
+      }
+    }}
+    className="w-4 h-4"
+  />
+  <label htmlFor="disableDepthToggle" className="text-sm text-gray-700">
+    Disable Depth Toggle in App
+  </label>
+</div>
+
+
         {/* 🧠 Context Explainers for Overview */}
 <div className="mt-6">
   <h3 className="text-lg font-semibold mb-2">Context Explainers (Overview)</h3>

@@ -37,7 +37,7 @@ export interface TimelineEvent {
   imageUrl?: string;
   sourceLink?: string;
   sources?: SourceItem[];
-  contexts?: { term: string; explainer: string }[]; // ✅ new
+  contexts?: { term: string; explainer: string }[];
 }
 
 // ---------------------------
@@ -58,7 +58,7 @@ export interface AnalysisSection {
   stakeholders: Stakeholder[];
   faqs: QA[];
   future: QA[];
-  [key: string]: any; // dynamic access safety for UI
+  [key: string]: any; // for dynamic UI safety
 }
 
 // ---------------------------
@@ -67,7 +67,7 @@ export interface AnalysisSection {
 
 export interface Draft {
   id?: string;
-  type?: "Theme" | "Story"; // differentiates between draft kinds
+  type?: "Theme" | "Story";
   title: string;
   overview: string;
   category: string;
@@ -76,13 +76,17 @@ export interface Draft {
   imageUrl?: string;
   sources: string[];
   timeline: TimelineEvent[];
-   contexts?: { term: string; explainer: string }[];
+  contexts?: { term: string; explainer: string }[];
 
   /**
-   * ✅ analysis is now optional and partial
-   * (so drafts can exist without full analysis initially)
+   * ✅ analysis is optional for drafts that don't have it yet
    */
   analysis?: Partial<AnalysisSection>;
+
+  /**
+   * 🧭 NEW: Optional flag to disable depth toggle in the app
+   */
+  disableDepthToggle?: boolean;
 
   keywords?: string[];
   status?: "draft" | "review" | "published";
@@ -95,7 +99,7 @@ export interface Draft {
 // 🔹 Firestore CRUD Functions
 // ---------------------------
 
-/** Create a new draft with full schema defaults */
+/** Create a new draft with default fields */
 export const createDraft = async (data: Partial<Draft>) => {
   const defaultDraft: Draft = {
     title: data.title || "",
@@ -108,6 +112,7 @@ export const createDraft = async (data: Partial<Draft>) => {
     sources: data.sources || [],
     timeline: [],
     analysis: { stakeholders: [], faqs: [], future: [] },
+    disableDepthToggle: data.disableDepthToggle || false,
 
     status: data.status || "draft",
     slug:
@@ -141,7 +146,7 @@ export const fetchDraft = async (id: string): Promise<Draft | null> => {
     : null;
 };
 
-/** ✅ Generic update (partial + merge support) */
+/** Generic partial update with merge support */
 export const updateDraft = async (id: string, patch: Partial<Draft>) => {
   const ref = doc(db, "drafts", id);
   await setDoc(
@@ -150,21 +155,20 @@ export const updateDraft = async (id: string, patch: Partial<Draft>) => {
       ...patch,
       updatedAt: serverTimestamp(),
     },
-    { merge: true } // 🔹 merge ensures partial updates like { analysis: { faqs: [...] } } work safely
+    { merge: true }
   );
 };
 
 /** Delete draft */
 export const deleteDraft = async (id: string) => {
-  const docRef = doc(db, "drafts", id);
-  await deleteDoc(docRef);
+  await deleteDoc(doc(db, "drafts", id));
 };
 
 // ---------------------------
 // 🔹 Timeline Helpers
 // ---------------------------
 
-/** Add a new event to timeline */
+/** Add a new event to a draft timeline */
 export const addTimelineEvent = async (
   id: string,
   eventData: Partial<TimelineEvent>
@@ -186,7 +190,7 @@ export const addTimelineEvent = async (
   await updateDraft(id, { timeline: updatedTimeline });
 };
 
-/** Update an existing event in timeline */
+/** Update a specific timeline event */
 export const updateTimelineEvent = async (
   id: string,
   index: number,
@@ -201,7 +205,7 @@ export const updateTimelineEvent = async (
   await updateDraft(id, { timeline: updatedTimeline });
 };
 
-/** Delete an event from timeline */
+/** Delete a timeline event */
 export const deleteTimelineEvent = async (id: string, index: number) => {
   const draft = await fetchDraft(id);
   if (!draft) throw new Error("Draft not found");
@@ -214,7 +218,7 @@ export const deleteTimelineEvent = async (id: string, index: number) => {
 // 🔹 Publishing
 // ---------------------------
 
-/** ✅ Smart publishing function — routes based on draft type */
+/** Publish a draft (routes automatically to 'stories' or 'themes') */
 export const publishDraft = async (id: string) => {
   const draftRef = doc(db, "drafts", id);
   const snap = await getDoc(draftRef);
@@ -225,7 +229,7 @@ export const publishDraft = async (id: string) => {
     draft.slug ||
     draft.title.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, "");
 
-  // ✅ Collect all sources from timeline events
+  // Collect all event-level sources
   const allSources =
     draft.timeline
       ?.flatMap((ev) => ev.sources || [])
@@ -236,7 +240,7 @@ export const publishDraft = async (id: string) => {
 
   await setDoc(publishRef, {
     ...draft,
-    sources: allSources, // ✅ add top-level sources field
+    sources: allSources,
     publishedAt: serverTimestamp(),
     status: "published",
   });
@@ -248,8 +252,7 @@ export const publishDraft = async (id: string) => {
   );
 };
 
-
-/** Optional: legacy direct story publisher (not needed if using publishDraft) */
+/** Optional: direct story publisher */
 export const publishStory = async (id: string) => {
   await publishDraft(id);
 };
