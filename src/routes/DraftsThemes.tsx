@@ -210,25 +210,66 @@ export default function DraftsThemes() {
         ) : (
           <ul className="divide-y">
             {drafts.map((draft) => (
-              <li key={draft.id} className="py-3 flex justify-between items-center">
+              <li
+                key={draft.id}
+                className="py-3 flex flex-col md:flex-row justify-between md:items-center gap-2"
+              >
                 <div>
                   <p className="font-medium">{draft.title || "Untitled"}</p>
                   <p className="text-sm text-gray-500">
                     {draft.category} • {draft.subcategory || "—"} • {draft.status}
                   </p>
+                  <p className="text-xs text-gray-400 font-mono">ID: {draft.id}</p>
                 </div>
-                <div className="space-x-2">
+
+                <div className="flex flex-wrap items-center gap-2 text-sm">
                   <button
                     onClick={() => navigate(`/drafts/${draft.id}`)}
                     className="text-blue-600 hover:underline"
                   >
                     Edit
                   </button>
+
                   <button
                     onClick={() => handleDelete(draft.id!)}
                     className="text-red-600 hover:underline"
                   >
                     Delete
+                  </button>
+
+                  {/* 💡 Copy ID */}
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(draft.id || "");
+                      alert("📋 ID copied to clipboard!");
+                    }}
+                    className="text-gray-600 hover:underline"
+                  >
+                    Copy ID
+                  </button>
+
+                  {/* 💡 Copy internal link syntax */}
+                  <button
+                    onClick={() => {
+                      const text = `[${draft.title}](@theme/${draft.id})`;
+                      navigator.clipboard.writeText(text);
+                      alert("📋 Internal link syntax copied!");
+                    }}
+                    className="text-green-600 hover:underline"
+                  >
+                    Copy Internal Link
+                  </button>
+
+                  {/* 💡 Copy external URL version */}
+                  <button
+                    onClick={() => {
+                      const text = `[${draft.title}](https://waitwhat.news/theme/${draft.id})`;
+                      navigator.clipboard.writeText(text);
+                      alert("🌐 External link copied!");
+                    }}
+                    className="text-purple-600 hover:underline"
+                  >
+                    Copy External Link
                   </button>
                 </div>
               </li>

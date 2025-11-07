@@ -30,6 +30,10 @@ export default function EditDraft() {
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [unsaved, setUnsaved] = useState(false);
+  const [selectionMap, setSelectionMap] = useState<
+  Record<number, { start: number; end: number }>
+>({});
+
 
 
   const [imageOptions, setImageOptions] = useState<string[]>([]);
@@ -633,29 +637,49 @@ useEffect(() => {
               </div>
 
               <textarea
-                value={ev.description}
-                onChange={(e) =>
-                  handleUpdateEvent(i, "description", e.target.value)
-                }
-                placeholder="Description"
-                rows={2}
-                className="border p-2 rounded w-full mb-2"
-              />
+  value={ev.description}
+  onChange={(e) => {
+    handleUpdateEvent(i, "description", e.target.value);
+  }}
+  onSelect={(e) => {
+    const target = e.target as HTMLTextAreaElement;
+    setSelectionMap((prev) => ({
+      ...prev,
+      [i]: {
+        start: target.selectionStart,
+        end: target.selectionEnd,
+      },
+    }));
+  }}
+  placeholder="Description"
+  rows={2}
+  className="border p-2 rounded w-full mb-2"
+/>
+
 
 {/* 🔗 Link selected text */}
 <button
   onClick={() => {
-    const targetId = prompt("Enter linked story/theme ID (e.g. story/abc123 or theme/xyz456):");
-    const selection = window.getSelection()?.toString();
-    if (!selection) {
-      alert("Select a term first, then click Link");
+    const targetId = prompt(
+      "Enter linked story/theme ID (e.g. story/abc123 or theme/xyz456):"
+    );
+    if (!targetId) return;
+
+    const sel = selectionMap[i];
+    if (!sel || sel.start === sel.end) {
+      alert("Select a term in the description box first, then click Link.");
       return;
     }
 
-    const newDesc = ev.description.replace(
-      selection,
-      `[${selection}](@${targetId})`
-    );
+    const { start, end } = sel;
+    const selectedText = ev.description.substring(start, end);
+    const linkedText = `[${selectedText}](@${targetId})`;
+
+    const newDesc =
+      ev.description.substring(0, start) +
+      linkedText +
+      ev.description.substring(end);
+
     const updatedTimeline = [...draft.timeline];
     updatedTimeline[i] = { ...ev, description: newDesc };
     setDraft({ ...draft, timeline: updatedTimeline });
@@ -665,7 +689,6 @@ useEffect(() => {
 >
   🔗 Link selected text
 </button>
-
 
 {/* Preview of description with clickable links */}
 <div className="text-sm text-gray-700 mt-2">

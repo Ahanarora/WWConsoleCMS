@@ -1,16 +1,11 @@
 // src/utils/gptHelpers.ts
 import { Draft, TimelineEvent, AnalysisSection } from "./firestoreHelpers";
 
-/** 🔧 Detect endpoint automatically */
-const API_URL = (() => {
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY || "";
-  return apiKey.startsWith("sk-or-")
-    ? "https://openrouter.ai/api/v1/chat/completions"
-    : "https://api.openai.com/v1/chat/completions";
-})();
+/** ✅ Always use OpenAI endpoint (your key is from OpenAI) */
+const API_URL = "https://api.openai.com/v1/chat/completions";
 
-/** Default model — GPT-5-nano on OpenRouter */
-const MODEL = "openai/gpt-5-nano";
+/** ✅ Model to use — cheap, fast, and reliable */
+const MODEL = "gpt-4o-mini";
 
 /** Generic chat completion call returning parsed JSON */
 async function callOpenAI(prompt: string, schemaDescription: string) {

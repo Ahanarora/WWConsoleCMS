@@ -1,30 +1,70 @@
-// --------------------------------------------
 // src/utils/renderLinkedText.tsx
-// --------------------------------------------
 import React from "react";
 import { Link } from "react-router-dom";
 
-export function renderLinkedText(text: string) {
+/**
+ * Converts markdown-style links into clickable React Router or external <a> links.
+ * Examples:
+ *   [Title](@story/abc123)
+ *   [Title](@theme/xyz456)
+ *   [Title](https://example.com)
+ */
+export function renderLinkedText(text: string): React.ReactNode {
   if (!text) return null;
 
-  // Split the text into normal and linked parts
-  const parts = text.split(/(\[.*?\]\(@(story|theme)\/[A-Za-z0-9_-]+\))/g);
+  const pattern =
+    /\[([^\]]+)\]\((@(?:story|theme)\/[A-Za-z0-9_-]+|https?:\/\/[^\s)]+)\)/g;
 
-  return parts.map((part, i) => {
-    const match = part.match(/\[(.*?)\]\(@(story|theme)\/([A-Za-z0-9_-]+)\)/);
-    if (!match) return <span key={i}>{part}</span>;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
 
-    const [, label, type, id] = match;
-    const path = type === "story" ? `/story/${id}` : `/theme/${id}`;
+  while ((match = pattern.exec(text)) !== null) {
+    const [full, label, target] = match;
+    const before = text.slice(lastIndex, match.index);
+    if (before) parts.push(<span key={lastIndex}>{before}</span>);
 
-    return (
-      <Link
-        key={i}
-        to={path}
-        className="text-blue-600 hover:underline font-medium"
-      >
-        {label}
-      </Link>
-    );
-  });
+    if (target.startsWith("@story/")) {
+      const id = target.replace("@story/", "");
+      parts.push(
+        <Link
+          key={match.index}
+          to={`/story/${id}`}
+          className="text-blue-600 hover:underline"
+        >
+          {label}
+        </Link>
+      );
+    } else if (target.startsWith("@theme/")) {
+      const id = target.replace("@theme/", "");
+      parts.push(
+        <Link
+          key={match.index}
+          to={`/theme/${id}`}
+          className="text-blue-600 hover:underline"
+        >
+          {label}
+        </Link>
+      );
+    } else {
+      parts.push(
+        <a
+          key={match.index}
+          href={target}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 hover:underline"
+        >
+          {label}
+        </a>
+      );
+    }
+
+    lastIndex = match.index + full.length;
+  }
+
+  if (lastIndex < text.length)
+    parts.push(<span key="end">{text.slice(lastIndex)}</span>);
+
+  return <>{parts}</>;
 }
