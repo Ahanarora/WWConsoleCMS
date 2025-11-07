@@ -1,7 +1,10 @@
+// ----------------------------------------
 // src/utils/gptHelpers.ts
+// ----------------------------------------
+
 import { Draft, TimelineEvent, AnalysisSection } from "./firestoreHelpers";
 
-/** ✅ Always use OpenAI endpoint (your key is from OpenAI) */
+/** ✅ Always use OpenAI endpoint */
 const API_URL = "https://api.openai.com/v1/chat/completions";
 
 /** ✅ Model to use — cheap, fast, and reliable */
@@ -212,4 +215,54 @@ Return ONLY valid JSON:
     console.warn("⚠️ Invalid JSON for event explainer:", text);
     return [];
   }
+}
+
+// ------------------------------------------------------
+// ✨ NEW GPT Context Generators for Timeline + Analysis
+// ------------------------------------------------------
+
+/** 🕒 Generate contextual explainers for an entire timeline event */
+export async function generateContextsForTimelineEvent(
+  event: TimelineEvent
+): Promise<{ term: string; explainer: string }[]> {
+  const prompt = `
+You are a concise factual news explainer.
+Given the event below, identify key proper nouns, organizations, or technical terms a general reader may not know.
+For each, write a short (under 20 words) neutral explanation.
+
+Event Title: ${event.event}
+Event Description: ${event.description}
+
+Return ONLY valid JSON:
+[
+  {"term": "string", "explainer": "string"}
+]
+`;
+
+  const schema = `[{"term": "string", "explainer": "string"}]`;
+  return await callOpenAI(prompt, schema);
+}
+
+/** 🧠 Generate contextual explainers for analysis sections (stakeholders, FAQs, future) */
+export async function generateContextsForAnalysis(
+  sectionKey: string,
+  items: any[]
+): Promise<{ term: string; explainer: string }[]> {
+  const prompt = `
+You are a concise factual explainer for a news analysis section.
+Section: ${sectionKey}
+
+For each entry below, suggest short (under 20 words) neutral explainers for key names or entities readers may not know.
+
+Entries:
+${JSON.stringify(items, null, 2)}
+
+Return ONLY valid JSON:
+[
+  {"term": "string", "explainer": "string"}
+]
+`;
+
+  const schema = `[{"term": "string", "explainer": "string"}]`;
+  return await callOpenAI(prompt, schema);
 }

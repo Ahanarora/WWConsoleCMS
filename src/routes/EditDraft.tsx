@@ -13,7 +13,14 @@ import {
   publishStory,
 } from "../utils/firestoreHelpers";
 import type { Draft, TimelineEvent } from "../utils/firestoreHelpers";
-import { generateTimeline, generateAnalysis } from "../utils/gptHelpers";
+import {
+  generateTimeline,
+  generateAnalysis,
+  generateExplainersForEvent,
+  generateContextsForTimelineEvent,
+  generateContextsForAnalysis,
+} from "../utils/gptHelpers";
+
 import { fetchEventCoverage } from "../api/fetchEventCoverage";
 import { renderLinkedText } from "../utils/renderLinkedText.tsx";
 
@@ -768,6 +775,33 @@ useEffect(() => {
   </button>
 </div>
 
+{/* ✨ GPT Context Auto-Suggest for this Event */}
+<button
+  onClick={async () => {
+    try {
+      setSaving(true);
+      const suggested = await generateContextsForTimelineEvent(ev);
+      if (!suggested?.length) {
+        alert("No contextual terms found for this event.");
+        return;
+      }
+
+      const merged = [...(ev.contexts || []), ...suggested];
+      handleUpdateEvent(i, "contexts", merged);
+      alert(`✅ Added ${suggested.length} contextual explainers for this event.`);
+    } catch (err) {
+      console.error("GPT error (event contexts):", err);
+      alert("❌ Failed to generate contexts for this event.");
+    } finally {
+      setSaving(false);
+    }
+  }}
+  className="text-purple-600 text-xs hover:underline mt-1 block"
+>
+  ✨ Suggest Contexts with GPT
+</button>
+
+
 {/* ✨ GPT Explainer Generator for this event */}
 <button
   onClick={async () => {
@@ -966,6 +1000,39 @@ useEffect(() => {
                     >
                       ➕ Add {labels[sectionKey].slice(0, -1)}
                     </button>
+
+                    {/* ✨ GPT Suggest Contexts for Analysis Section */}
+<button
+  onClick={async () => {
+    const sectionItems = draft.analysis?.[sectionKey] || [];
+    if (!sectionItems.length) {
+      alert("No items to analyze yet.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const suggested = await generateContextsForAnalysis(sectionKey, sectionItems);
+      if (!suggested?.length) {
+        alert("No contextual terms found.");
+        return;
+      }
+
+      const mergedContexts = [...(draft.contexts || []), ...suggested];
+      setDraft({ ...draft, contexts: mergedContexts });
+      alert(`✅ Added ${suggested.length} contextual explainers from ${sectionKey}.`);
+    } catch (err) {
+      console.error("GPT error (analysis contexts):", err);
+      alert("❌ Failed to generate analysis contexts.");
+    } finally {
+      setSaving(false);
+    }
+  }}
+  className="text-purple-600 text-xs hover:underline mt-1 block"
+>
+  ✨ Suggest Contexts with GPT
+</button>
+
 
                     {/* Items list */}
                     {section.length === 0 ? (
