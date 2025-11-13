@@ -368,6 +368,56 @@ useEffect(() => {
             </div>
           )}
 
+       {/* ⭐ Tiny Pin to Featured */}
+<div className="flex items-center gap-3 md:col-span-2 mt-2">
+  <input
+    type="checkbox"
+    id="isPinnedFeatured"
+    checked={draft.isPinnedFeatured || false}
+    onChange={async (e) => {
+      const checked = e.target.checked;
+      setDraft({ ...draft, isPinnedFeatured: checked });
+
+      if (id) {
+        try {
+          await updateDraft(id, { isPinnedFeatured: checked });
+        } catch (err) {
+          console.error("❌ Failed to update isPinnedFeatured:", err);
+        }
+      }
+    }}
+    className="w-4 h-4"
+  />
+
+  <label htmlFor="isPinnedFeatured" className="text-sm text-gray-800">
+    Pin as Featured
+  </label>
+
+  {/* Category selector only when pinned */}
+  {draft.isPinnedFeatured && (
+    <select
+      value={draft.pinnedCategory || "All"}
+      onChange={async (e) => {
+        const val = e.target.value;
+        setDraft({ ...draft, pinnedCategory: val });
+
+        if (id) {
+          try {
+            await updateDraft(id, { pinnedCategory: val });
+          } catch (err) {
+            console.error("❌ Failed to update pinnedCategory:", err);
+          }
+        }
+      }}
+      className="border p-1 rounded text-sm"
+    >
+      <option value="All">All Categories</option>
+      <option value={draft.category}>{draft.category}</option>
+    </select>
+  )}
+</div>
+
+
           {/* Overview */}
           <textarea
             name="overview"

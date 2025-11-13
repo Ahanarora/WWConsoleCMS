@@ -79,14 +79,25 @@ export interface Draft {
   contexts?: { term: string; explainer: string }[];
 
   /**
-   * ✅ analysis is optional for drafts that don't have it yet
+   * Optional analysis block
    */
   analysis?: Partial<AnalysisSection>;
 
   /**
-   * 🧭 NEW: Optional flag to disable depth toggle in the app
+   * 🧭 Optional flag to disable depth toggle in the mobile app
    */
   disableDepthToggle?: boolean;
+
+  /**
+   * ⭐ NEW — Manual override for featuring (pin)
+   */
+  isPinnedFeatured?: boolean;
+
+  /**
+   * ⭐ NEW — Category-level pin (i.e. only featured inside this category)
+   * "All" = featured globally regardless of category
+   */
+  pinnedCategory?: string | "All";
 
   keywords?: string[];
   status?: "draft" | "review" | "published";
@@ -114,11 +125,19 @@ export const createDraft = async (data: Partial<Draft>) => {
     analysis: { stakeholders: [], faqs: [], future: [] },
     disableDepthToggle: data.disableDepthToggle || false,
 
+    // ⭐ NEW FIELDS
+    isPinnedFeatured: data.isPinnedFeatured ?? false,
+    pinnedCategory: data.pinnedCategory ?? "All",
+
+    keywords: data.keywords || [],
     status: data.status || "draft",
     slug:
       data.slug ||
       (data.title
-        ? data.title.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, "")
+        ? data.title
+            .toLowerCase()
+            .replace(/\s+/g, "-")
+            .replace(/[^\w-]/g, "")
         : ""),
     editorNotes: data.editorNotes || "",
     updatedAt: serverTimestamp(),
@@ -245,7 +264,10 @@ export const publishDraft = async (id: string) => {
     status: "published",
   });
 
-  await updateDoc(draftRef, { status: "published", updatedAt: serverTimestamp() });
+  await updateDoc(draftRef, {
+    status: "published",
+    updatedAt: serverTimestamp(),
+  });
 
   console.log(
     `✅ Published ${draft.type} → /${collectionName}/${slug} with ${allSources.length} sources`
