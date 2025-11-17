@@ -58,6 +58,12 @@ export default function EditDraft() {
     sourceLink: "",
   });
 
+  const ensureDraftShape = (data: Draft): Draft => ({
+    ...data,
+    timeline: data.timeline || [],
+    phases: data.phases || [],
+  });
+
   // ----------------------------
   // LOAD DRAFT
   // ----------------------------
@@ -66,7 +72,7 @@ export default function EditDraft() {
       try {
         if (!id) return;
         const data = await fetchDraft(id);
-        setDraft(data);
+        setDraft(data ? ensureDraftShape(data) : null);
       } catch (err) {
         console.error(err);
         alert("Failed to load draft.");
@@ -124,7 +130,8 @@ useEffect(() => {
     if (!id || !draft) return;
     setPublishing(true);
     try {
-      if (draft.category === "Story") {
+      await updateDraft(id, { phases: draft.phases || [] });
+      if (draft.type === "Story") {
         await publishStory(id);
         alert("✅ Story published successfully!");
       } else {
@@ -149,7 +156,7 @@ useEffect(() => {
       const timeline = await generateTimeline(draft);
       await updateDraft(id, { timeline });
       const updated = await fetchDraft(id);
-      setDraft(updated);
+      setDraft(updated ? ensureDraftShape(updated) : null);
       alert("✅ Timeline generated successfully!");
     } catch (err: any) {
       console.error(err);
@@ -166,7 +173,7 @@ useEffect(() => {
       const analysis = await generateAnalysis(draft);
       await updateDraft(id, { analysis });
       const updated = await fetchDraft(id);
-      setDraft(updated);
+      setDraft(updated ? ensureDraftShape(updated) : null);
       alert("✅ Analysis generated successfully!");
     } catch (err: any) {
       console.error(err);
@@ -183,7 +190,9 @@ useEffect(() => {
     if (!id) return;
     await addTimelineEvent(id, newEvent);
     const updated = await fetchDraft(id);
-    setDraft(updated);
+    if (updated) {
+      setDraft(ensureDraftShape(updated));
+    }
     setNewEvent({
       date: "",
       event: "",
@@ -207,7 +216,18 @@ useEffect(() => {
     if (!window.confirm("Delete this event?")) return;
     await deleteTimelineEvent(id, index);
     const updated = await fetchDraft(id);
-    setDraft(updated);
+    if (!updated) return;
+
+    const phases = (updated.phases || [])
+      .filter((p) => p.startIndex !== index)
+      .map((p) => ({
+        ...p,
+        startIndex: p.startIndex > index ? p.startIndex - 1 : p.startIndex,
+      }));
+
+    updated.phases = phases;
+
+    setDraft(ensureDraftShape(updated));
     setUnsaved(true);
   };
 
@@ -216,9 +236,18 @@ useEffect(() => {
   // ----------------------------
   const handleFetchCoverage = async (i: number, ev: TimelineEvent) => {
     if (!id || !draft) return;
+
+    const eventTitle = ev.event?.trim();
+    if (!eventTitle) {
+      alert("Please add an event title before fetching coverage.");
+      return;
+    }
+
+    const description = ev.description ?? "";
+
     try {
-      console.log("🔗 Fetching Serper coverage for:", ev.event);
-      const result = await fetchEventCoverage(ev.event, ev.description, ev.date);
+      console.log("🔗 Fetching Serper coverage for:", eventTitle);
+      const result = await fetchEventCoverage(eventTitle, description, ev.date || "");
 
       if (result.sources?.length) {
         const normalizedSources = result.sources.map((s) => ({
@@ -271,20 +300,7 @@ useEffect(() => {
             ← Back
           </button>
           <button
-            onClick={async () => {
-              try {
-                setPublishing(true);
-                await publishDraft(id!);
-                alert(
-                  `✅ ${draft?.type === "Story" ? "Story" : "Theme"} published successfully!`
-                );
-              } catch (err: any) {
-                console.error("❌ Error publishing:", err);
-                alert("❌ Failed to publish draft. Check console for details.");
-              } finally {
-                setPublishing(false);
-              }
-            }}
+            onClick={handlePublish}
             disabled={publishing}
             className="bg-green-600 text-white px-3 py-1.5 rounded hover:bg-green-700 disabled:opacity-50"
           >
@@ -577,6 +593,7 @@ useEffect(() => {
         {loadingTimeline ? "Generating…" : "🧠 Generate Timeline"}
       </button>
 
+
       {/* ➕ Add Event */}
       <button
         onClick={async () => {
@@ -614,7 +631,10 @@ useEffect(() => {
     if (!id || !draft) return;
     try {
       setSaving(true);
-      await updateDraft(id, { timeline: draft.timeline });
+      await updateDraft(id, {
+        timeline: draft.timeline,
+        phases: draft.phases || [],
+      });
       setUnsaved(false);
       alert("✅ Timeline saved successfully!");
     } catch (err) {
@@ -646,10 +666,69 @@ useEffect(() => {
       ) : (
         <div className="space-y-4 mb-4">
           {draft.timeline.map((ev, i) => (
-            <div key={i} className="border p-3 rounded">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+            <div key={i} className="mb-6">
+              {/* Insert Phase button BEFORE this event */}
+              <button
+                className="text-purple-600 text-xs hover:underline mb-2"
+                onClick={() => {
+                  const newPhase = {
+                    title: "New Phase",
+                    startIndex: i,
+                  };
+                  const phases = [...(draft.phases || []), newPhase];
+                  setDraft({ ...draft, phases });
+                  setUnsaved(true);
+                }}
+              >
+                ➕ Insert Phase Here
+              </button>
+
+              {/* PHASE EDITOR */}
+{(draft.phases || [])
+  .filter((p) => p.startIndex === i)
+  .map((phase) => {
+    const realIdx = (draft.phases || []).indexOf(phase);
+
+    return (
+      <div
+        key={`phase-${realIdx}`}
+        className="border border-purple-300 bg-purple-50 p-3 rounded mb-3"
+      >
+        {/* TITLE INPUT */}
+        <input
+          value={phase.title || ""}
+          onChange={(e) => {
+            const phases = [...(draft.phases || [])];
+            phases[realIdx] = { ...phase, title: e.target.value };
+            setDraft({ ...draft, phases });
+            setUnsaved(true);
+          }}
+          className="border p-2 rounded w-full"
+          placeholder="Phase title"
+        />
+
+        {/* DELETE PHASE */}
+        <button
+          className="text-red-600 text-xs mt-1 hover:underline"
+          onClick={() => {
+            const phases = (draft.phases || []).filter(
+              (_, idx) => idx !== realIdx
+            );
+            setDraft({ ...draft, phases });
+            setUnsaved(true);
+          }}
+        >
+          ✖ Remove Phase
+        </button>
+      </div>
+    );
+  })}
+
+
+              <div className="border p-3 rounded">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
                 <input
-                  value={ev.date}
+                  value={ev.date || ""}
                   onChange={(e) =>
                     handleUpdateEvent(i, "date", e.target.value)
                   }
@@ -714,7 +793,7 @@ useEffect(() => {
               </div>
 
               <textarea
-  value={ev.description}
+  value={ev.description || ""}
   onChange={(e) => {
     handleUpdateEvent(i, "description", e.target.value);
   }}
@@ -751,15 +830,16 @@ useEffect(() => {
     }
 
     const { start, end } = sel;
-    const selectedText = ev.description.substring(start, end);
+    const description = ev.description ?? "";
+    const selectedText = description.substring(start, end);
 
     // ✅ Correct markdown format
     const linkedText = `[${selectedText}](@${targetId})`;
 
     const newDesc =
-      ev.description.substring(0, start) +
+      description.substring(0, start) +
       linkedText +
-      ev.description.substring(end);
+      description.substring(end);
 
     const updatedTimeline = [...draft.timeline];
     updatedTimeline[i] = { ...ev, description: newDesc };
@@ -773,7 +853,7 @@ useEffect(() => {
 
 {/* Preview of description with clickable links */}
 <div className="text-sm text-gray-700 mt-2">
-  {renderLinkedText(ev.description)}
+{renderLinkedText(ev.description ?? "")}
 </div>
 
               {/* 🧠 Context Explainers for this Event */}
@@ -855,9 +935,17 @@ useEffect(() => {
 {/* ✨ GPT Explainer Generator for this event */}
 <button
   onClick={async () => {
+    const eventTitle = ev.event?.trim();
+    const eventDescription = ev.description?.trim();
+
+    if (!eventTitle || !eventDescription) {
+      alert("Please add an event title and description first.");
+      return;
+    }
+
     const eventData = {
-      event: ev.event,
-      description: ev.description,
+      event: eventTitle,
+      description: eventDescription,
       contexts: ev.contexts || [],
     };
 
@@ -990,6 +1078,7 @@ useEffect(() => {
                 </div>
               )}
             </div>
+          </div>
           ))}
         </div>
       )}

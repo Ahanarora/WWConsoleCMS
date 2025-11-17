@@ -29,11 +29,25 @@ export interface SourceItem {
   score?: number;
 }
 
+/**
+ * ⭐ UPDATED: TimelineEvent now supports two kinds of blocks:
+ * 1) Event blocks (date, event, description)
+ * 2) Phase blocks → { phase: true, title: string }
+ */
 export interface TimelineEvent {
-  date: string;
-  event: string;
-  description: string;
-  significance: number;
+  // ---------------------
+  // PHASE FIELDS
+  // ---------------------
+  phase?: boolean;      // If true → this is a phase divider
+  title?: string;       // Phase title (e.g., "Build-up Phase")
+
+  // ---------------------
+  // EVENT FIELDS
+  // ---------------------
+  date?: string;
+  event?: string;
+  description?: string;
+  significance?: number;
   imageUrl?: string;
   sourceLink?: string;
   sources?: SourceItem[];
@@ -75,8 +89,11 @@ export interface Draft {
   tags: string[];
   imageUrl?: string;
   sources: string[];
+
+  /**
+   * ⭐ UPDATED: timeline now supports BOTH events and phases
+   */
   timeline: TimelineEvent[];
-  contexts?: { term: string; explainer: string }[];
 
   /**
    * Optional analysis block
@@ -84,19 +101,16 @@ export interface Draft {
   analysis?: Partial<AnalysisSection>;
 
   /**
-   * 🧭 Optional flag to disable depth toggle in the mobile app
+   * ⭐ FUTURE-PROOF: Optional phases array (not required, but supported)
    */
+  phases?: { title: string; description?: string; startIndex: number }[];
+
+  contexts?: { term: string; explainer: string }[];
+
   disableDepthToggle?: boolean;
 
-  /**
-   * ⭐ NEW — Manual override for featuring (pin)
-   */
+  // ⭐ NEW FEATURE FLAGS
   isPinnedFeatured?: boolean;
-
-  /**
-   * ⭐ NEW — Category-level pin (i.e. only featured inside this category)
-   * "All" = featured globally regardless of category
-   */
   pinnedCategory?: string | "All";
 
   keywords?: string[];
@@ -121,16 +135,23 @@ export const createDraft = async (data: Partial<Draft>) => {
     tags: data.tags || [],
     imageUrl: data.imageUrl || "",
     sources: data.sources || [],
+
+    /**
+     * ⭐ timeline supports phase objects now
+     */
     timeline: [],
+
     analysis: { stakeholders: [], faqs: [], future: [] },
     disableDepthToggle: data.disableDepthToggle || false,
 
-    // ⭐ NEW FIELDS
+    // New fields
     isPinnedFeatured: data.isPinnedFeatured ?? false,
     pinnedCategory: data.pinnedCategory ?? "All",
 
+    // Extra metadata
     keywords: data.keywords || [],
     status: data.status || "draft",
+
     slug:
       data.slug ||
       (data.title
@@ -139,6 +160,7 @@ export const createDraft = async (data: Partial<Draft>) => {
             .replace(/\s+/g, "-")
             .replace(/[^\w-]/g, "")
         : ""),
+
     editorNotes: data.editorNotes || "",
     updatedAt: serverTimestamp(),
   };
@@ -187,7 +209,10 @@ export const deleteDraft = async (id: string) => {
 // 🔹 Timeline Helpers
 // ---------------------------
 
-/** Add a new event to a draft timeline */
+/**
+ * Add a new event or phase block to a draft timeline
+ * ⭐ FULLY SUPPORTS PHASES
+ */
 export const addTimelineEvent = async (
   id: string,
   eventData: Partial<TimelineEvent>
@@ -195,21 +220,35 @@ export const addTimelineEvent = async (
   const draft = await fetchDraft(id);
   if (!draft) throw new Error("Draft not found");
 
-  const newEvent: TimelineEvent = {
-    date: eventData.date || "",
-    event: eventData.event || "",
-    description: eventData.description || "",
-    significance: eventData.significance || 1,
-    imageUrl: eventData.imageUrl || "",
-    sourceLink: eventData.sourceLink || "",
-    sources: eventData.sources || [],
-  };
+  let newBlock: TimelineEvent;
 
-  const updatedTimeline = [...(draft.timeline || []), newEvent];
+  if (eventData.phase) {
+    // ⭐ PHASE BLOCK
+    newBlock = {
+      phase: true,
+      title: eventData.title || "New Phase",
+    };
+  } else {
+    // ⭐ EVENT BLOCK
+    newBlock = {
+      date: eventData.date || "",
+      event: eventData.event || "",
+      description: eventData.description || "",
+      significance: eventData.significance || 1,
+      imageUrl: eventData.imageUrl || "",
+      sourceLink: eventData.sourceLink || "",
+      sources: eventData.sources || [],
+      contexts: eventData.contexts || [],
+    };
+  }
+
+  const updatedTimeline = [...(draft.timeline || []), newBlock];
   await updateDraft(id, { timeline: updatedTimeline });
 };
 
-/** Update a specific timeline event */
+/**
+ * Update any timeline block — event OR phase
+ */
 export const updateTimelineEvent = async (
   id: string,
   index: number,
@@ -219,12 +258,15 @@ export const updateTimelineEvent = async (
   if (!draft) throw new Error("Draft not found");
 
   const updatedTimeline = [...(draft.timeline || [])];
-  updatedTimeline[index] = { ...updatedTimeline[index], ...eventData };
+  updatedTimeline[index] = {
+    ...updatedTimeline[index],
+    ...eventData,
+  };
 
   await updateDraft(id, { timeline: updatedTimeline });
 };
 
-/** Delete a timeline event */
+/** Delete a timeline block (event or phase) */
 export const deleteTimelineEvent = async (id: string, index: number) => {
   const draft = await fetchDraft(id);
   if (!draft) throw new Error("Draft not found");
@@ -237,7 +279,10 @@ export const deleteTimelineEvent = async (id: string, index: number) => {
 // 🔹 Publishing
 // ---------------------------
 
-/** Publish a draft (routes automatically to 'stories' or 'themes') */
+/**
+ * Publish a draft (routes automatically to 'stories' or 'themes')
+ * ⭐ NOW publishes phase blocks too (no changes required)
+ */
 export const publishDraft = async (id: string) => {
   const draftRef = doc(db, "drafts", id);
   const snap = await getDoc(draftRef);
