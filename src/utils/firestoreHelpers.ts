@@ -103,7 +103,12 @@ export interface Draft {
   /**
    * ⭐ FUTURE-PROOF: Optional phases array (not required, but supported)
    */
-  phases?: { title: string; description?: string; startIndex: number }[];
+  phases?: {
+    title: string;
+    description?: string;
+    startIndex: number;
+    endIndex?: number;
+  }[];
 
   contexts?: { term: string; explainer: string }[];
 

@@ -220,10 +220,26 @@ useEffect(() => {
 
     const phases = (updated.phases || [])
       .filter((p) => p.startIndex !== index)
-      .map((p) => ({
-        ...p,
-        startIndex: p.startIndex > index ? p.startIndex - 1 : p.startIndex,
-      }));
+      .map((p) => {
+        const shiftedStart =
+          p.startIndex > index ? p.startIndex - 1 : p.startIndex;
+        let shiftedEnd =
+          typeof p.endIndex === "number"
+            ? p.endIndex > index
+              ? p.endIndex - 1
+              : p.endIndex
+            : undefined;
+
+        if (typeof shiftedEnd === "number" && shiftedEnd < shiftedStart) {
+          shiftedEnd = shiftedStart;
+        }
+
+        return {
+          ...p,
+          startIndex: shiftedStart,
+          endIndex: shiftedEnd,
+        };
+      });
 
     updated.phases = phases;
 
@@ -674,6 +690,7 @@ useEffect(() => {
                   const newPhase = {
                     title: "New Phase",
                     startIndex: i,
+                    endIndex: i,
                   };
                   const phases = [...(draft.phases || []), newPhase];
                   setDraft({ ...draft, phases });
@@ -688,6 +705,18 @@ useEffect(() => {
   .filter((p) => p.startIndex === i)
   .map((phase) => {
     const realIdx = (draft.phases || []).indexOf(phase);
+    const timelineLength = draft.timeline.length;
+    const lastPossible = Math.max(
+      phase.startIndex,
+      timelineLength > 0 ? timelineLength - 1 : phase.startIndex
+    );
+    const currentEndValue = Math.min(
+      Math.max(phase.startIndex, phase.endIndex ?? phase.startIndex),
+      lastPossible
+    );
+    const startEventLabel =
+      draft.timeline[phase.startIndex]?.event ||
+      `Event ${phase.startIndex + 1}`;
 
     return (
       <div
@@ -706,6 +735,36 @@ useEffect(() => {
           className="border p-2 rounded w-full"
           placeholder="Phase title"
         />
+
+        <p className="text-xs text-gray-600 mt-1">
+          Starts at event #{phase.startIndex + 1}: {startEventLabel}
+        </p>
+
+        <label className="text-xs text-gray-600 mt-2 block">
+          End this phase after event
+          <select
+            className="border p-2 rounded w-full mt-1 text-sm"
+            value={currentEndValue}
+            onChange={(e) => {
+              const nextValue = Number(e.target.value);
+              const safeValue = Math.max(phase.startIndex, nextValue);
+              const phases = [...(draft.phases || [])];
+              phases[realIdx] = { ...phase, endIndex: safeValue };
+              setDraft({ ...draft, phases });
+              setUnsaved(true);
+            }}
+          >
+            {draft.timeline.map((ev, idx) => (
+              <option
+                key={`phase-${realIdx}-end-${idx}`}
+                value={idx}
+                disabled={idx < phase.startIndex}
+              >
+                #{idx + 1} · {ev.event || `Event ${idx + 1}`}
+              </option>
+            ))}
+          </select>
+        </label>
 
         {/* DELETE PHASE */}
         <button
