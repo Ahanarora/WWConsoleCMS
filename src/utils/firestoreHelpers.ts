@@ -30,20 +30,12 @@ export interface SourceItem {
 }
 
 /**
- * ⭐ UPDATED: TimelineEvent now supports two kinds of blocks:
- * 1) Event blocks (date, event, description)
- * 2) Phase blocks → { phase: true, title: string }
+ * ⭐ TimelineEvent now supports normal events + phases
  */
 export interface TimelineEvent {
-  // ---------------------
-  // PHASE FIELDS
-  // ---------------------
-  phase?: boolean;      // If true → this is a phase divider
-  title?: string;       // Phase title (e.g., "Build-up Phase")
+  phase?: boolean;
+  title?: string;
 
-  // ---------------------
-  // EVENT FIELDS
-  // ---------------------
   date?: string;
   event?: string;
   description?: string;
@@ -72,7 +64,7 @@ export interface AnalysisSection {
   stakeholders: Stakeholder[];
   faqs: QA[];
   future: QA[];
-  [key: string]: any; // for dynamic UI safety
+  [key: string]: any;
 }
 
 // ---------------------------
@@ -90,19 +82,10 @@ export interface Draft {
   imageUrl?: string;
   sources: string[];
 
-  /**
-   * ⭐ UPDATED: timeline now supports BOTH events and phases
-   */
   timeline: TimelineEvent[];
 
-  /**
-   * Optional analysis block
-   */
   analysis?: Partial<AnalysisSection>;
 
-  /**
-   * ⭐ FUTURE-PROOF: Optional phases array (not required, but supported)
-   */
   phases?: {
     title: string;
     description?: string;
@@ -114,7 +97,7 @@ export interface Draft {
 
   disableDepthToggle?: boolean;
 
-  // ⭐ NEW FEATURE FLAGS
+  // Feature flags
   isPinnedFeatured?: boolean;
   pinnedCategory?: string | "All";
 
@@ -122,7 +105,9 @@ export interface Draft {
   status?: "draft" | "review" | "published";
   slug: string;
   editorNotes?: string;
+
   updatedAt?: any;
+  createdAt?: any;   // ⭐ NEW
 }
 
 // ---------------------------
@@ -141,19 +126,14 @@ export const createDraft = async (data: Partial<Draft>) => {
     imageUrl: data.imageUrl || "",
     sources: data.sources || [],
 
-    /**
-     * ⭐ timeline supports phase objects now
-     */
     timeline: [],
 
     analysis: { stakeholders: [], faqs: [], future: [] },
     disableDepthToggle: data.disableDepthToggle || false,
 
-    // New fields
     isPinnedFeatured: data.isPinnedFeatured ?? false,
     pinnedCategory: data.pinnedCategory ?? "All",
 
-    // Extra metadata
     keywords: data.keywords || [],
     status: data.status || "draft",
 
@@ -167,6 +147,9 @@ export const createDraft = async (data: Partial<Draft>) => {
         : ""),
 
     editorNotes: data.editorNotes || "",
+
+    // ⭐ timestamps
+    createdAt: serverTimestamp(),   // NEW
     updatedAt: serverTimestamp(),
   };
 
@@ -199,7 +182,7 @@ export const updateDraft = async (id: string, patch: Partial<Draft>) => {
     ref,
     {
       ...patch,
-      updatedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(), // ⭐ do NOT overwrite createdAt
     },
     { merge: true }
   );
@@ -215,8 +198,7 @@ export const deleteDraft = async (id: string) => {
 // ---------------------------
 
 /**
- * Add a new event or phase block to a draft timeline
- * ⭐ FULLY SUPPORTS PHASES
+ * Add a new event or phase block
  */
 export const addTimelineEvent = async (
   id: string,
@@ -228,13 +210,11 @@ export const addTimelineEvent = async (
   let newBlock: TimelineEvent;
 
   if (eventData.phase) {
-    // ⭐ PHASE BLOCK
     newBlock = {
       phase: true,
       title: eventData.title || "New Phase",
     };
   } else {
-    // ⭐ EVENT BLOCK
     newBlock = {
       date: eventData.date || "",
       event: eventData.event || "",
@@ -251,9 +231,7 @@ export const addTimelineEvent = async (
   await updateDraft(id, { timeline: updatedTimeline });
 };
 
-/**
- * Update any timeline block — event OR phase
- */
+/** Update timeline block */
 export const updateTimelineEvent = async (
   id: string,
   index: number,
@@ -271,7 +249,7 @@ export const updateTimelineEvent = async (
   await updateDraft(id, { timeline: updatedTimeline });
 };
 
-/** Delete a timeline block (event or phase) */
+/** Delete timeline block */
 export const deleteTimelineEvent = async (id: string, index: number) => {
   const draft = await fetchDraft(id);
   if (!draft) throw new Error("Draft not found");
@@ -285,8 +263,8 @@ export const deleteTimelineEvent = async (id: string, index: number) => {
 // ---------------------------
 
 /**
- * Publish a draft (routes automatically to 'stories' or 'themes')
- * ⭐ NOW publishes phase blocks too (no changes required)
+ * Publish a draft → /stories or /themes
+ * ⭐ preserves createdAt
  */
 export const publishDraft = async (id: string) => {
   const draftRef = doc(db, "drafts", id);
@@ -298,7 +276,6 @@ export const publishDraft = async (id: string) => {
     draft.slug ||
     draft.title.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, "");
 
-  // Collect all event-level sources
   const allSources =
     draft.timeline
       ?.flatMap((ev) => ev.sources || [])
@@ -311,6 +288,7 @@ export const publishDraft = async (id: string) => {
     ...draft,
     sources: allSources,
     publishedAt: serverTimestamp(),
+    createdAt: draft.createdAt || serverTimestamp(),   // ⭐ preserve original
     status: "published",
   });
 
@@ -324,7 +302,6 @@ export const publishDraft = async (id: string) => {
   );
 };
 
-/** Optional: direct story publisher */
 export const publishStory = async (id: string) => {
   await publishDraft(id);
 };
