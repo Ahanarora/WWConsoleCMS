@@ -36,8 +36,8 @@ export default function EditDraft() {
   const [publishing, setPublishing] = useState(false);
   const [unsaved, setUnsaved] = useState(false);
   const [selectionMap, setSelectionMap] = useState<
-  Record<number, { start: number; end: number }>
->({});
+    Record<string, { start: number; end: number }>
+  >({});
 
 
   const [imageOptions, setImageOptions] = useState<string[]>([]);
@@ -64,6 +64,54 @@ export default function EditDraft() {
     phases: data.phases || [],
     isPinned: data.isPinned ?? data.isPinnedFeatured ?? false,
   });
+
+  const rememberSelection = (
+    key: string,
+    target: HTMLInputElement | HTMLTextAreaElement
+  ) => {
+    if (!target) return;
+    const start = target.selectionStart ?? 0;
+    const end = target.selectionEnd ?? 0;
+    setSelectionMap((prev) => ({
+      ...prev,
+      [key]: { start, end },
+    }));
+  };
+
+  const insertInternalLinkToken = (
+    key: string,
+    currentValue: string,
+    applyValue: (next: string) => void
+  ) => {
+    let targetId = prompt(
+      "Enter linked story/theme ID (e.g. story/abc123 or theme/xyz456):"
+    );
+    if (!targetId) return;
+
+    targetId = targetId.replace(/^@+/, "").replace(/\[|\]|\(|\)/g, "").trim();
+    if (!targetId) return;
+
+    const sel = selectionMap[key];
+    if (!sel || sel.start === sel.end) {
+      alert("Select text in the field first, then click Link.");
+      return;
+    }
+
+    const safeText = currentValue || "";
+    const { start, end } = sel;
+    const selectedText = safeText.substring(start, end);
+    if (!selectedText) {
+      alert("Selection is empty.");
+      return;
+    }
+
+    const linkedText = `[${selectedText}](@${targetId})`;
+    const newValue =
+      safeText.substring(0, start) + linkedText + safeText.substring(end);
+
+    applyValue(newValue);
+    setUnsaved(true);
+  };
 
   // ----------------------------
   // LOAD DRAFT
@@ -486,12 +534,36 @@ useEffect(() => {
           {/* Overview */}
           <textarea
             name="overview"
-            value={draft.overview}
+            value={draft.overview || ""}
             onChange={handleMetadataChange}
+            onSelect={(e) =>
+              rememberSelection("overview", e.target as HTMLTextAreaElement)
+            }
             placeholder="Overview"
             rows={3}
             className="border p-2 rounded md:col-span-2"
           />
+          <div className="md:col-span-2 flex items-center gap-2 text-xs text-blue-600 mt-1">
+            <button
+              type="button"
+              onClick={() =>
+                insertInternalLinkToken(
+                  "overview",
+                  draft.overview || "",
+                  (next) => setDraft({ ...draft, overview: next })
+                )
+              }
+              className="text-blue-600 hover:underline"
+            >
+              🔗 Link selected text
+            </button>
+            <span className="text-gray-500">
+              Select text in the overview box, then click to link another story/theme.
+            </span>
+          </div>
+          <div className="md:col-span-2 text-sm text-gray-600">
+            {renderLinkedText(draft.overview || "")}
+          </div>
         </div>
 
         {/* 🧭 Depth Toggle Setting */}
@@ -885,63 +957,38 @@ useEffect(() => {
               </div>
 
               <textarea
-  value={ev.description || ""}
-  onChange={(e) => {
-    handleUpdateEvent(i, "description", e.target.value);
-  }}
-  onSelect={(e) => {
-    const target = e.target as HTMLTextAreaElement;
-    setSelectionMap((prev) => ({
-      ...prev,
-      [i]: {
-        start: target.selectionStart,
-        end: target.selectionEnd,
-      },
-    }));
-  }}
-  placeholder="Description"
-  rows={2}
-  className="border p-2 rounded w-full mb-2"
-/>
+                value={ev.description || ""}
+                onChange={(e) => {
+                  handleUpdateEvent(i, "description", e.target.value);
+                }}
+                onSelect={(e) =>
+                  rememberSelection(
+                    `timeline-${i}`,
+                    e.target as HTMLTextAreaElement
+                  )
+                }
+                placeholder="Description"
+                rows={2}
+                className="border p-2 rounded w-full mb-2"
+              />
 
-{/* 🔗 Link selected text */}
-<button
-  onClick={() => {
-    let targetId = prompt(
-      "Enter linked story/theme ID (e.g. story/abc123 or theme/xyz456):"
-    );
-    if (!targetId) return;
-
-    // ✅ Clean user input: remove accidental '@' or brackets
-    targetId = targetId.replace(/^@+/, "").replace(/\[|\]|\(|\)/g, "");
-
-    const sel = selectionMap[i];
-    if (!sel || sel.start === sel.end) {
-      alert("Select a term in the description box first, then click Link.");
-      return;
-    }
-
-    const { start, end } = sel;
-    const description = ev.description ?? "";
-    const selectedText = description.substring(start, end);
-
-    // ✅ Correct markdown format
-    const linkedText = `[${selectedText}](@${targetId})`;
-
-    const newDesc =
-      description.substring(0, start) +
-      linkedText +
-      description.substring(end);
-
-    const updatedTimeline = [...draft.timeline];
-    updatedTimeline[i] = { ...ev, description: newDesc };
-    setDraft({ ...draft, timeline: updatedTimeline });
-    setUnsaved(true);
-  }}
-  className="text-blue-600 text-xs hover:underline mb-2"
->
-  🔗 Link selected text
-</button>
+              {/* 🔗 Link selected text */}
+              <button
+                onClick={() =>
+                  insertInternalLinkToken(
+                    `timeline-${i}`,
+                    ev.description || "",
+                    (next) => {
+                      const updatedTimeline = [...draft.timeline];
+                      updatedTimeline[i] = { ...ev, description: next };
+                      setDraft({ ...draft, timeline: updatedTimeline });
+                    }
+                  )
+                }
+                className="text-blue-600 text-xs hover:underline mb-2"
+              >
+                🔗 Link selected text
+              </button>
 
 {/* Preview of description with clickable links */}
 <div className="text-sm text-gray-700 mt-2">
@@ -1249,8 +1296,10 @@ useEffect(() => {
         return;
       }
 
-      const mergedContexts = [...(draft.contexts || []), ...suggested];
-      setDraft({ ...draft, contexts: mergedContexts });
+      const nextAnalysis = { ...(draft.analysis || {}) };
+      const mergedContexts = [...(nextAnalysis.contexts || []), ...suggested];
+      nextAnalysis.contexts = mergedContexts;
+      setDraft({ ...draft, analysis: nextAnalysis });
       alert(`✅ Added ${suggested.length} contextual explainers from ${sectionKey}.`);
     } catch (err) {
       console.error("GPT error (analysis contexts):", err);
@@ -1291,9 +1340,36 @@ useEffect(() => {
                                     ).name = e.target.value;
                                     setDraft(updated);
                                   }}
+                                  onSelect={(e) =>
+                                    rememberSelection(
+                                      `stakeholder-name-${idx}`,
+                                      e.target as HTMLInputElement
+                                    )
+                                  }
                                   placeholder="Name"
                                   className="w-full border p-1 rounded"
                                 />
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    insertInternalLinkToken(
+                                      `stakeholder-name-${idx}`,
+                                      item.name || "",
+                                      (next) => {
+                                        const updated = { ...draft };
+                                        (
+                                          (updated.analysis as Record<string, any>)[
+                                            sectionKey
+                                          ][idx]
+                                        ).name = next;
+                                        setDraft(updated);
+                                      }
+                                    )
+                                  }
+                                  className="text-xs text-blue-600 hover:underline mt-1 text-left"
+                                >
+                                  🔗 Link selected text
+                                </button>
                                 <textarea
                                   value={item.detail}
                                   onChange={(e) => {
@@ -1305,9 +1381,36 @@ useEffect(() => {
                                     ).detail = e.target.value;
                                     setDraft(updated);
                                   }}
+                                  onSelect={(e) =>
+                                    rememberSelection(
+                                      `stakeholder-detail-${idx}`,
+                                      e.target as HTMLTextAreaElement
+                                    )
+                                  }
                                   placeholder="Detail"
                                   className="w-full border p-1 rounded"
                                 />
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    insertInternalLinkToken(
+                                      `stakeholder-detail-${idx}`,
+                                      item.detail || "",
+                                      (next) => {
+                                        const updated = { ...draft };
+                                        (
+                                          (updated.analysis as Record<string, any>)[
+                                            sectionKey
+                                          ][idx]
+                                        ).detail = next;
+                                        setDraft(updated);
+                                      }
+                                    )
+                                  }
+                                  className="text-xs text-blue-600 hover:underline mt-1 text-left"
+                                >
+                                  🔗 Link selected text
+                                </button>
                               </>
                             ) : (
                               <>
@@ -1323,9 +1426,36 @@ useEffect(() => {
                                     ).question = e.target.value;
                                     setDraft(updated);
                                   }}
+                                  onSelect={(e) =>
+                                    rememberSelection(
+                                      `${sectionKey}-question-${idx}`,
+                                      e.target as HTMLInputElement
+                                    )
+                                  }
                                   placeholder="Question"
                                   className="w-full border p-1 rounded"
                                 />
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    insertInternalLinkToken(
+                                      `${sectionKey}-question-${idx}`,
+                                      item.question || "",
+                                      (next) => {
+                                        const updated = { ...draft };
+                                        (
+                                          (updated.analysis as Record<string, any>)[
+                                            sectionKey
+                                          ][idx]
+                                        ).question = next;
+                                        setDraft(updated);
+                                      }
+                                    )
+                                  }
+                                  className="text-xs text-blue-600 hover:underline mt-1 text-left"
+                                >
+                                  🔗 Link selected text
+                                </button>
                                 <textarea
                                   value={item.answer}
                                   onChange={(e) => {
@@ -1337,9 +1467,36 @@ useEffect(() => {
                                     ).answer = e.target.value;
                                     setDraft(updated);
                                   }}
+                                  onSelect={(e) =>
+                                    rememberSelection(
+                                      `${sectionKey}-answer-${idx}`,
+                                      e.target as HTMLTextAreaElement
+                                    )
+                                  }
                                   placeholder="Answer"
                                   className="w-full border p-1 rounded"
                                 />
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    insertInternalLinkToken(
+                                      `${sectionKey}-answer-${idx}`,
+                                      item.answer || "",
+                                      (next) => {
+                                        const updated = { ...draft };
+                                        (
+                                          (updated.analysis as Record<string, any>)[
+                                            sectionKey
+                                          ][idx]
+                                        ).answer = next;
+                                        setDraft(updated);
+                                      }
+                                    )
+                                  }
+                                  className="text-xs text-blue-600 hover:underline mt-1 text-left"
+                                >
+                                  🔗 Link selected text
+                                </button>
                               </>
                             )}
 
@@ -1371,6 +1528,81 @@ useEffect(() => {
             })}
           </div>
         )}
+
+        <div className="mt-6 border-t pt-4">
+          <h3 className="text-lg font-semibold mb-2">
+            Analysis Context Explainers
+          </h3>
+          <p className="text-sm text-gray-500 mb-3">
+            These terms will be highlighted within Stakeholders, FAQs, and Future sections.
+          </p>
+
+          {(draft.analysis?.contexts || []).map((ctx: any, idx: number) => (
+            <div key={idx} className="flex gap-2 items-center mb-2">
+              <input
+                type="text"
+                value={ctx.term}
+                onChange={(e) => {
+                  const nextAnalysis = { ...(draft.analysis || {}) };
+                  const updatedContexts = [...(nextAnalysis.contexts || [])];
+                  updatedContexts[idx] = {
+                    ...updatedContexts[idx],
+                    term: e.target.value,
+                  };
+                  nextAnalysis.contexts = updatedContexts;
+                  setDraft({ ...draft, analysis: nextAnalysis });
+                }}
+                placeholder="Term"
+                className="border p-2 rounded flex-1"
+              />
+              <input
+                type="text"
+                value={ctx.explainer}
+                onChange={(e) => {
+                  const nextAnalysis = { ...(draft.analysis || {}) };
+                  const updatedContexts = [...(nextAnalysis.contexts || [])];
+                  updatedContexts[idx] = {
+                    ...updatedContexts[idx],
+                    explainer: e.target.value,
+                  };
+                  nextAnalysis.contexts = updatedContexts;
+                  setDraft({ ...draft, analysis: nextAnalysis });
+                }}
+                placeholder="Explainer"
+                className="border p-2 rounded flex-[2]"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const nextAnalysis = { ...(draft.analysis || {}) };
+                  const updatedContexts = (nextAnalysis.contexts || []).filter(
+                    (_: any, i: number) => i !== idx
+                  );
+                  nextAnalysis.contexts = updatedContexts;
+                  setDraft({ ...draft, analysis: nextAnalysis });
+                }}
+                className="text-red-600 text-sm hover:underline"
+              >
+                ✖
+              </button>
+            </div>
+          ))}
+
+          <button
+            type="button"
+            onClick={() => {
+              const nextAnalysis = { ...(draft.analysis || {}) };
+              nextAnalysis.contexts = [
+                ...(nextAnalysis.contexts || []),
+                { term: "", explainer: "" },
+              ];
+              setDraft({ ...draft, analysis: nextAnalysis });
+            }}
+            className="text-blue-600 text-sm hover:underline"
+          >
+            ➕ Add analysis context term
+          </button>
+        </div>
 
               {/* 💾 Save button */}
       <button
