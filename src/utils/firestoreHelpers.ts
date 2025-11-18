@@ -98,7 +98,8 @@ export interface Draft {
   disableDepthToggle?: boolean;
 
   // Feature flags
-  isPinnedFeatured?: boolean;
+  isPinned?: boolean;
+  isPinnedFeatured?: boolean; // legacy support
   pinnedCategory?: string | "All";
   isCompactCard?: boolean;
 
@@ -116,6 +117,11 @@ export interface Draft {
 // ---------------------------
 
 /** Create a new draft with default fields */
+const normalizeDraft = (data: Draft): Draft => ({
+  ...data,
+  isPinned: data.isPinned ?? data.isPinnedFeatured ?? false,
+});
+
 export const createDraft = async (data: Partial<Draft>) => {
   const defaultDraft: Draft = {
     title: data.title || "",
@@ -132,7 +138,8 @@ export const createDraft = async (data: Partial<Draft>) => {
     analysis: { stakeholders: [], faqs: [], future: [] },
     disableDepthToggle: data.disableDepthToggle || false,
 
-    isPinnedFeatured: data.isPinnedFeatured ?? false,
+    isPinned: data.isPinned ?? data.isPinnedFeatured ?? false,
+    isPinnedFeatured: data.isPinnedFeatured ?? data.isPinned ?? false,
     isCompactCard: data.isCompactCard ?? false,
     pinnedCategory: data.pinnedCategory ?? "All",
 
@@ -162,10 +169,12 @@ export const createDraft = async (data: Partial<Draft>) => {
 /** Fetch all drafts */
 export const fetchDrafts = async (): Promise<Draft[]> => {
   const snapshot = await getDocs(collection(db, "drafts"));
-  return snapshot.docs.map((d) => ({
-    id: d.id,
-    ...(d.data() as Draft),
-  }));
+  return snapshot.docs.map((d) =>
+    normalizeDraft({
+      id: d.id,
+      ...(d.data() as Draft),
+    })
+  );
 };
 
 /** Fetch one draft by ID */
@@ -173,7 +182,10 @@ export const fetchDraft = async (id: string): Promise<Draft | null> => {
   const docRef = doc(db, "drafts", id);
   const snapshot = await getDoc(docRef);
   return snapshot.exists()
-    ? ({ id: snapshot.id, ...(snapshot.data() as Draft) } as Draft)
+    ? (normalizeDraft({
+        id: snapshot.id,
+        ...(snapshot.data() as Draft),
+      }) as Draft)
     : null;
 };
 

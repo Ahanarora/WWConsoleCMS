@@ -62,6 +62,7 @@ export default function EditDraft() {
     ...data,
     timeline: data.timeline || [],
     phases: data.phases || [],
+    isPinned: data.isPinned ?? data.isPinnedFeatured ?? false,
   });
 
   // ----------------------------
@@ -400,54 +401,57 @@ useEffect(() => {
             </div>
           )}
 
-       {/* ⭐ Tiny Pin to Featured */}
-<div className="flex items-center gap-3 md:col-span-2 mt-2">
-  <input
-    type="checkbox"
-    id="isPinnedFeatured"
-    checked={draft.isPinnedFeatured || false}
-    onChange={async (e) => {
-      const checked = e.target.checked;
-      setDraft({ ...draft, isPinnedFeatured: checked });
+          {/* ⭐ Tiny Pin to Featured */}
+          <div className="flex items-center gap-3 md:col-span-2 mt-2">
+            <input
+              type="checkbox"
+              id="isPinned"
+              checked={draft.isPinned || false}
+              onChange={async (e) => {
+                const checked = e.target.checked;
+                setDraft({ ...draft, isPinned: checked });
 
-      if (id) {
-        try {
-          await updateDraft(id, { isPinnedFeatured: checked });
-        } catch (err) {
-          console.error("❌ Failed to update isPinnedFeatured:", err);
-        }
-      }
-    }}
-    className="w-4 h-4"
-  />
+                if (id) {
+                  try {
+                    await updateDraft(id, {
+                      isPinned: checked,
+                      isPinnedFeatured: checked,
+                    });
+                  } catch (err) {
+                    console.error("❌ Failed to update isPinned:", err);
+                  }
+                }
+              }}
+              className="w-4 h-4"
+            />
 
-  <label htmlFor="isPinnedFeatured" className="text-sm text-gray-800">
-    Pin as Featured
-  </label>
+            <label htmlFor="isPinned" className="text-sm text-gray-800">
+              Pin as Featured
+            </label>
 
-  {/* Category selector only when pinned */}
-  {draft.isPinnedFeatured && (
-    <select
-      value={draft.pinnedCategory || "All"}
-      onChange={async (e) => {
-        const val = e.target.value;
-        setDraft({ ...draft, pinnedCategory: val });
+            {/* Category selector only when pinned */}
+            {draft.isPinned && (
+              <select
+                value={draft.pinnedCategory || "All"}
+                onChange={async (e) => {
+                  const val = e.target.value;
+                  setDraft({ ...draft, pinnedCategory: val });
 
-        if (id) {
-          try {
-            await updateDraft(id, { pinnedCategory: val });
-          } catch (err) {
-            console.error("❌ Failed to update pinnedCategory:", err);
-          }
-        }
-      }}
-      className="border p-1 rounded text-sm"
-    >
-      <option value="All">All Categories</option>
-      <option value={draft.category}>{draft.category}</option>
-    </select>
-  )}
-</div>
+                  if (id) {
+                    try {
+                      await updateDraft(id, { pinnedCategory: val });
+                    } catch (err) {
+                      console.error("❌ Failed to update pinnedCategory:", err);
+                    }
+                  }
+                }}
+                className="border p-1 rounded text-sm"
+              >
+                <option value="All">All Categories</option>
+                <option value={draft.category}>{draft.category}</option>
+              </select>
+            )}
+          </div>
 
         {/* 🧱 Compact Card Toggle */}
         <div className="flex items-start gap-3 md:col-span-2">
