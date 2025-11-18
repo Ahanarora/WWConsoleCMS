@@ -449,6 +449,35 @@ useEffect(() => {
   )}
 </div>
 
+        {/* 🧱 Compact Card Toggle */}
+        <div className="flex items-start gap-3 md:col-span-2">
+          <input
+            type="checkbox"
+            id="isCompactCard"
+            checked={draft.isCompactCard || false}
+            onChange={async (e) => {
+              const checked = e.target.checked;
+              setDraft({ ...draft, isCompactCard: checked });
+
+              if (id) {
+                try {
+                  await updateDraft(id, { isCompactCard: checked });
+                } catch (err) {
+                  console.error("❌ Failed to update isCompactCard:", err);
+                }
+              }
+            }}
+            className="w-4 h-4 mt-1"
+          />
+          <label htmlFor="isCompactCard" className="text-sm text-gray-800">
+            Render as compact card
+            <span className="block text-gray-500 text-xs">
+              Home/Stories/Themes screens on WWFinal will show only the title and a small
+              thumbnail when enabled.
+            </span>
+          </label>
+        </div>
+
 
           {/* Overview */}
           <textarea

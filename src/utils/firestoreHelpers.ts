@@ -100,6 +100,7 @@ export interface Draft {
   // Feature flags
   isPinnedFeatured?: boolean;
   pinnedCategory?: string | "All";
+  isCompactCard?: boolean;
 
   keywords?: string[];
   status?: "draft" | "review" | "published";
@@ -132,6 +133,7 @@ export const createDraft = async (data: Partial<Draft>) => {
     disableDepthToggle: data.disableDepthToggle || false,
 
     isPinnedFeatured: data.isPinnedFeatured ?? false,
+    isCompactCard: data.isCompactCard ?? false,
     pinnedCategory: data.pinnedCategory ?? "All",
 
     keywords: data.keywords || [],
