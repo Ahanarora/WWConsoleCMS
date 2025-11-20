@@ -247,28 +247,30 @@ export default function DraftsStories() {
       Copy ID
     </button>
 
+    {/* 💡 Copy slug */}
+    {draft.slug && (
+      <button
+        onClick={() => {
+          navigator.clipboard.writeText(draft.slug || "");
+          alert("📋 Slug copied to clipboard!");
+        }}
+        className="text-purple-600 hover:underline"
+      >
+        Copy Slug
+      </button>
+    )}
+
     {/* 💡 Copy internal link syntax */}
     <button
       onClick={() => {
-        const text = `[${draft.title}](@story/${draft.id})`;
+        const slugOrId = draft.slug || draft.id;
+        const text = `[${draft.title}](@story/${slugOrId})`;
         navigator.clipboard.writeText(text);
         alert("📋 Internal link syntax copied!");
       }}
       className="text-green-600 hover:underline"
     >
       Copy Internal Link
-    </button>
-
-    {/* 💡 Copy external URL version (if needed later) */}
-    <button
-      onClick={() => {
-        const text = `[${draft.title}](https://waitwhat.news/story/${draft.id})`;
-        navigator.clipboard.writeText(text);
-        alert("🌐 External link copied!");
-      }}
-      className="text-purple-600 hover:underline"
-    >
-      Copy External Link
     </button>
   </div>
 </li>

@@ -248,28 +248,30 @@ export default function DraftsThemes() {
                     Copy ID
                   </button>
 
+                  {/* 💡 Copy slug */}
+                  {draft.slug && (
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(draft.slug || "");
+                        alert("📋 Slug copied to clipboard!");
+                      }}
+                      className="text-purple-600 hover:underline"
+                    >
+                      Copy Slug
+                    </button>
+                  )}
+
                   {/* 💡 Copy internal link syntax */}
                   <button
                     onClick={() => {
-                      const text = `[${draft.title}](@theme/${draft.id})`;
+                      const slugOrId = draft.slug || draft.id;
+                      const text = `[${draft.title}](@theme/${slugOrId})`;
                       navigator.clipboard.writeText(text);
                       alert("📋 Internal link syntax copied!");
                     }}
                     className="text-green-600 hover:underline"
                   >
                     Copy Internal Link
-                  </button>
-
-                  {/* 💡 Copy external URL version */}
-                  <button
-                    onClick={() => {
-                      const text = `[${draft.title}](https://waitwhat.news/theme/${draft.id})`;
-                      navigator.clipboard.writeText(text);
-                      alert("🌐 External link copied!");
-                    }}
-                    className="text-purple-600 hover:underline"
-                  >
-                    Copy External Link
                   </button>
                 </div>
               </li>
