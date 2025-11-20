@@ -2,6 +2,7 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
+import { getAuth } from "firebase/auth";
 
 
 // ✅ Your actual Firebase project config
@@ -19,3 +20,4 @@ const firebaseConfig = {
 export const app = initializeApp(firebaseConfig);  // ✅ <--- add this export
 export const db = getFirestore(app);
 export const functions = getFunctions(app, "asia-south1");
+export const auth = getAuth(app);
