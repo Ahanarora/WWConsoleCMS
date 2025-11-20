@@ -6,7 +6,6 @@ import { useParams, useNavigate } from "react-router-dom";
 import {
   fetchDraft,
   updateDraft,
-  addTimelineEvent,
   updateTimelineEvent,
   deleteTimelineEvent,
   publishDraft,
@@ -50,15 +49,6 @@ export default function EditDraft() {
   const [showAnalysis, setShowAnalysis] = useState(true);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
-
-  const [newEvent, setNewEvent] = useState<Partial<TimelineEvent>>({
-    date: "",
-    event: "",
-    description: "",
-    significance: 1,
-    imageUrl: "",
-    sourceLink: "",
-  });
 
   const ensureDraftShape = (data: Draft): Draft => ({
     ...data,
@@ -262,20 +252,30 @@ const handleCloudinaryUpload = async () => {
   // TIMELINE HANDLERS
   // ----------------------------
   const handleAddEvent = async () => {
-    if (!id) return;
-    await addTimelineEvent(id, newEvent);
-    const updated = await fetchDraft(id);
-    if (updated) {
-      setDraft(ensureDraftShape(updated));
-    }
-    setNewEvent({
+    if (!id || !draft) return;
+    const newItem: TimelineEvent = {
       date: "",
       event: "",
       description: "",
       significance: 1,
       imageUrl: "",
       sourceLink: "",
-    });
+      sources: [],
+      contexts: [],
+    };
+
+    const updatedTimeline = [...(draft.timeline || []), newItem];
+    setDraft({ ...draft, timeline: updatedTimeline });
+
+    try {
+      await updateDraft(id, { timeline: updatedTimeline });
+      alert("🆕 Blank event added. Scroll to the end of the timeline to edit it.");
+    } catch (err) {
+      console.error("❌ Failed to add event:", err);
+      alert("❌ Failed to add event. Please try again.");
+      const refreshed = await fetchDraft(id);
+      if (refreshed) setDraft(ensureDraftShape(refreshed));
+    }
   };
 
   const handleUpdateEvent = async (index: number, field: keyof TimelineEvent, value: any) => {
@@ -752,30 +752,7 @@ np
 
       {/* ➕ Add Event */}
       <button
-        onClick={async () => {
-          const newItem = {
-            date: "",
-            event: "",
-            description: "",
-            significance: 1,
-            imageUrl: "",
-            sourceLink: "",
-            sources: [],
-          };
-          const updatedTimeline = [...(draft.timeline || []), newItem];
-          setDraft({ ...draft, timeline: updatedTimeline });
-
-          // ✅ Optional Enhancement: Auto-save to Firestore
-          if (id) {
-            try {
-              await updateDraft(id, { timeline: updatedTimeline });
-              console.log("✅ New event added and saved to Firestore.");
-            } catch (err) {
-              console.error("❌ Failed to save new event:", err);
-              alert("❌ Failed to save new event.");
-            }
-          }
-        }}
+        onClick={handleAddEvent}
         className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
       >
         ➕ Add Event
