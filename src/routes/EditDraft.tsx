@@ -23,6 +23,8 @@ import {
 
 import { fetchEventCoverage } from "../api/fetchEventCoverage";
 import { renderLinkedText } from "../utils/renderLinkedText.tsx";
+import { uploadToCloudinary } from "../utils/cloudinaryUpload";
+
 
 
 
@@ -156,6 +158,30 @@ useEffect(() => {
     const { name, value } = e.target;
     setDraft({ ...draft, [name]: value });
   };
+
+  // ----------------------------
+// CLOUDINARY — UPLOAD FROM MIDJOURNEY LINK
+// ----------------------------
+const handleCloudinaryUpload = async () => {
+  const url = prompt("Paste Midjourney Image URL:");
+
+  if (!url) return;
+
+  try {
+    const cloudUrl = await uploadToCloudinary(url);
+
+    setDraft((prev) =>
+      prev ? { ...prev, imageUrl: cloudUrl } : prev
+    );
+
+    setUnsaved(true);
+    alert("✅ Uploaded to Cloudinary!");
+  } catch (err) {
+    console.error(err);
+    alert("❌ Failed to upload image.");
+  }
+};
+
 
   const saveMetadata = async () => {
     if (!draft || !id) return;
@@ -419,6 +445,15 @@ useEffect(() => {
             placeholder="Main Thumbnail / Cover Image URL"
             className="border p-2 rounded md:col-span-2"
           />
+
+          <button
+  type="button"
+  onClick={handleCloudinaryUpload}
+  className="px-3 py-2 bg-purple-600 text-white rounded md:col-span-2 hover:bg-purple-700"
+>
+  ☁️ Upload Image from Midjourney Link
+</button>
+np
 
           {/* Live thumbnail preview */}
           {draft.imageUrl && (
