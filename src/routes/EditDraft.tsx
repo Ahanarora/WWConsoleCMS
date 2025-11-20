@@ -7,7 +7,6 @@ import {
   fetchDraft,
   updateDraft,
   updateTimelineEvent,
-  deleteTimelineEvent,
   publishDraft,
   publishStory,
 } from "../utils/firestoreHelpers";
@@ -56,6 +55,39 @@ export default function EditDraft() {
     phases: data.phases || [],
     isPinned: data.isPinned ?? data.isPinnedFeatured ?? false,
   });
+
+  const shiftPhasesAfterRemoval = (
+    phases: Draft["phases"] = [],
+    removedIndex: number,
+    nextTimelineLength: number
+  ): Draft["phases"] =>
+    (phases || [])
+      .filter((p) => p.startIndex !== removedIndex)
+      .map((phase) => {
+        const newStart =
+          phase.startIndex > removedIndex ? phase.startIndex - 1 : phase.startIndex;
+        let newEnd =
+          typeof phase.endIndex === "number"
+            ? phase.endIndex >= removedIndex
+              ? phase.endIndex - 1
+              : phase.endIndex
+            : undefined;
+
+        if (typeof newEnd === "number" && newEnd < newStart) {
+          newEnd = newStart;
+        }
+
+        if (newStart >= nextTimelineLength) {
+          return null;
+        }
+
+        return {
+          ...phase,
+          startIndex: newStart,
+          endIndex: newEnd,
+        };
+      })
+      .filter(Boolean) as Draft["phases"];
 
   const rememberSelection = (
     key: string,
@@ -287,39 +319,33 @@ const handleCloudinaryUpload = async () => {
   };
 
   const handleDeleteEvent = async (index: number) => {
-    if (!id) return;
+    if (!id || !draft) return;
     if (!window.confirm("Delete this event?")) return;
-    await deleteTimelineEvent(id, index);
-    const updated = await fetchDraft(id);
-    if (!updated) return;
 
-    const phases = (updated.phases || [])
-      .filter((p) => p.startIndex !== index)
-      .map((p) => {
-        const shiftedStart =
-          p.startIndex > index ? p.startIndex - 1 : p.startIndex;
-        let shiftedEnd =
-          typeof p.endIndex === "number"
-            ? p.endIndex > index
-              ? p.endIndex - 1
-              : p.endIndex
-            : undefined;
+    const updatedTimeline = draft.timeline.filter((_, i) => i !== index);
+    const adjustedPhases = shiftPhasesAfterRemoval(
+      draft.phases || [],
+      index,
+      updatedTimeline.length
+    );
 
-        if (typeof shiftedEnd === "number" && shiftedEnd < shiftedStart) {
-          shiftedEnd = shiftedStart;
-        }
-
-        return {
-          ...p,
-          startIndex: shiftedStart,
-          endIndex: shiftedEnd,
-        };
-      });
-
-    updated.phases = phases;
-
-    setDraft(ensureDraftShape(updated));
+    setDraft({ ...draft, timeline: updatedTimeline, phases: adjustedPhases });
     setUnsaved(true);
+
+    try {
+      await updateDraft(id, { timeline: updatedTimeline, phases: adjustedPhases });
+      const refreshed = await fetchDraft(id);
+      if (refreshed) {
+        setDraft(ensureDraftShape(refreshed));
+        setUnsaved(false);
+      }
+      alert("✅ Event deleted.");
+    } catch (err) {
+      console.error("❌ Failed to delete event:", err);
+      alert("❌ Failed to delete event.");
+      const refreshed = await fetchDraft(id);
+      if (refreshed) setDraft(ensureDraftShape(refreshed));
+    }
   };
 
   // ----------------------------
