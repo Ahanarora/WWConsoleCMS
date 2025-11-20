@@ -7,10 +7,10 @@ import { NavLink, Outlet } from "react-router-dom";
 
 export default function Layout() {
   const navItems = [
-    { label: "🏠 Dashboard", path: "/" },
-    { label: "📰 Theme Drafts", path: "/drafts/themes" },
-    { label: "📖 Story Drafts", path: "/drafts/stories" },
-    { label: "⚙️ Prompt Lab", path: "/promptlab" }, // ✅ New link
+    { label: "🏠 Dashboard", path: "/app" },
+    { label: "📰 Theme Drafts", path: "/app/drafts/themes" },
+    { label: "📖 Story Drafts", path: "/app/drafts/stories" },
+    { label: "⚙️ Prompt Lab", path: "/app/promptlab" }, // ✅ New link
   ];
 
   return (

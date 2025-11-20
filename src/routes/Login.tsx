@@ -9,7 +9,7 @@ export default function Login() {
   const login = async () => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      window.location.href = "/edit"; // go to dashboard
+      window.location.href = "/app"; // go to dashboard
     } catch (err: any) {
   alert(err.message);
 }

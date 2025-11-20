@@ -101,7 +101,7 @@ export default function DraftsThemes() {
         imageUrl: "",
       });
 
-      navigate(`/drafts/${id}`);
+      navigate(`/app/drafts/${id}`);
     } catch (err) {
       console.error("Error creating draft:", err);
       alert("Failed to create draft");
@@ -224,7 +224,7 @@ export default function DraftsThemes() {
 
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   <button
-                    onClick={() => navigate(`/drafts/${draft.id}`)}
+                    onClick={() => navigate(`/app/drafts/${draft.id}`)}
                     className="text-blue-600 hover:underline"
                   >
                     Edit

@@ -17,7 +17,7 @@ export default function DraftCard({ id, title, overview, onDelete }: Props) {
 
       <div className="flex justify-end gap-4 mt-4 text-sm">
         <Link
-          to={`/drafts/${id}`}
+          to={`/app/drafts/${id}`}
           className="text-blue-600 hover:underline font-medium"
         >
           Edit
