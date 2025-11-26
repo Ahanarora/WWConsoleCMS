@@ -23,6 +23,47 @@ import { fetchEventCoverage } from "../api/fetchEventCoverage";
 import { renderLinkedText } from "../utils/renderLinkedText.tsx";
 import { uploadToCloudinary } from "../utils/cloudinaryUpload";
 
+const CATEGORY_OPTIONS = [
+  {
+    value: "POLITICS",
+    subcategories: [
+      "Elections & Power Transitions",
+      "Government Policies & Bills",
+      "Public Institutions & Judiciary",
+      "Geopolitics & Diplomacy",
+    ],
+  },
+  {
+    value: "BUSINESS & ECONOMY",
+    subcategories: [
+      "Macroeconomy",
+      "Industries",
+      "Markets & Finance",
+      "Trade & Tariffs",
+      "Corporate Developments",
+    ],
+  },
+  {
+    value: "WORLD",
+    subcategories: [
+      "International Conflicts",
+      "Global Governance",
+      "Migration & Humanitarian Crises",
+      "Elections Worldwide",
+      "Science & Tech",
+      "Environment",
+    ],
+  },
+  {
+    value: "INDIA",
+    subcategories: [
+      "Social Issues",
+      "Infrastructure & Development",
+      "Science, Tech and Environment",
+    ],
+  },
+];
+
 function getFactCheckDotColor(score: number): string {
   if (score >= 85) return "#16a34a"; // green
   if (score >= 70) return "#eab308"; // yellow
@@ -62,11 +103,76 @@ export default function EditDraft() {
   const [loadingTimeline, setLoadingTimeline] = useState(false);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
 
+  const computeAllCategories = (
+    primary?: string,
+    secondary: string[] = []
+  ) => {
+    const merged = [primary, ...(secondary || [])]
+      .filter((c): c is string => !!c && c.trim().length > 0)
+      .map((c) => c.trim());
+    return Array.from(new Set(merged));
+  };
+
+  const uniq = (arr: string[]) => Array.from(new Set(arr));
+
+  const primarySubcategories =
+    CATEGORY_OPTIONS.find((c) => c.value === draft?.category)?.subcategories ||
+    [];
+
+  // Expose all subcategories so secondary selections are always available.
+  const secondarySubcategoryOptions = uniq(
+    CATEGORY_OPTIONS.flatMap((c) => c.subcategories || [])
+  );
+
+  const handlePrimaryCategoryChange = (value: string) => {
+    if (!draft) return;
+    const subs =
+      CATEGORY_OPTIONS.find((c) => c.value === value)?.subcategories || [];
+    const nextSub = subs.includes(draft.subcategory || "")
+      ? draft.subcategory
+      : subs[0] || "";
+    const allCategories = computeAllCategories(
+      value,
+      draft.secondaryCategories || []
+    );
+    const nextPinned =
+      draft.pinnedCategory && draft.pinnedCategory === draft.category
+        ? value
+        : draft.pinnedCategory;
+    setDraft({
+      ...draft,
+      category: value,
+      subcategory: nextSub,
+      allCategories,
+      pinnedCategory: nextPinned,
+    });
+  };
+
+  const toggleSecondaryCategory = (cat: string, checked: boolean) => {
+    if (!draft) return;
+    const current = draft.secondaryCategories || [];
+    const next = checked
+      ? uniq([...current, cat])
+      : current.filter((c) => c !== cat);
+    const allCategories = computeAllCategories(draft.category, next);
+    setDraft({
+      ...draft,
+      secondaryCategories: next,
+      allCategories,
+    });
+    setUnsaved(true);
+  };
+
   const ensureDraftShape = (data: Draft): Draft => ({
     ...data,
     timeline: data.timeline || [],
     phases: data.phases || [],
     isPinned: data.isPinned ?? data.isPinnedFeatured ?? false,
+    secondaryCategories: data.secondaryCategories || [],
+    secondarySubcategories: data.secondarySubcategories || [],
+    allCategories:
+      data.allCategories ||
+      computeAllCategories(data.category, data.secondaryCategories || []),
   });
 
   interface FactCheckResult {
@@ -340,12 +446,18 @@ const handleCloudinaryUpload = async () => {
     if (!draft || !id) return;
     try {
       setSaving(true);
-      await updateDraft(id, draft);
+      const allCategories = computeAllCategories(
+        draft.category,
+        draft.secondaryCategories || []
+      );
+      const payload = { ...draft, allCategories };
+      setDraft(payload);
+      await updateDraft(id, payload);
       setUnsaved(false);
       alert("✅ Metadata saved");
     } catch (err) {
       console.error(err);
-      alert("❌ Failed to save metadata");
+      alert("❌ Failed to save metadata: " + (err?.message || "Unknown error"));
     } finally {
       setSaving(false);
     }
@@ -578,22 +690,106 @@ const handleCloudinaryUpload = async () => {
           />
 
           {/* Category */}
-          <input
-            name="category"
-            value={draft.category}
-            onChange={handleMetadataChange}
-            placeholder="Category (e.g. Politics, Economy)"
-            className="border p-2 rounded"
-          />
+          <div className="flex flex-col gap-1">
+            <label className="text-sm text-gray-700 font-medium">
+              Primary Category
+            </label>
+            <select
+              name="category"
+              value={draft.category}
+              onChange={(e) => handlePrimaryCategoryChange(e.target.value)}
+              className="border p-2 rounded"
+            >
+              <option value="">Select category</option>
+              {CATEGORY_OPTIONS.map((cat) => (
+                <option key={cat.value} value={cat.value}>
+                  {cat.value}
+                </option>
+              ))}
+            </select>
+          </div>
 
           {/* Subcategory */}
-          <input
-            name="subcategory"
-            value={draft.subcategory}
-            onChange={handleMetadataChange}
-            placeholder="Subcategory (e.g. Geopolitical Conflict)"
-            className="border p-2 rounded"
-          />
+          <div className="flex flex-col gap-1">
+            <label className="text-sm text-gray-700 font-medium">
+              Primary Subcategory
+            </label>
+            <select
+              name="subcategory"
+              value={draft.subcategory}
+              onChange={(e) =>
+                setDraft({ ...draft, subcategory: e.target.value })
+              }
+              className="border p-2 rounded"
+              disabled={!draft.category}
+            >
+              <option value="">Select subcategory</option>
+              {primarySubcategories.map((sub) => (
+                <option key={sub} value={sub}>
+                  {sub}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Secondary Categories */}
+          <div className="md:col-span-2 flex flex-col gap-2">
+            <label className="text-sm text-gray-700 font-medium">
+              Secondary Categories
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {CATEGORY_OPTIONS.filter((c) => c.value !== draft.category).map(
+                (cat) => (
+                  <label
+                    key={`sec-cat-${cat.value}`}
+                    className="flex items-center gap-2 border rounded px-2 py-1 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={
+                        draft.secondaryCategories?.includes(cat.value) || false
+                      }
+                      onChange={(e) =>
+                        toggleSecondaryCategory(cat.value, e.target.checked)
+                      }
+                    />
+                    <span>{cat.value}</span>
+                  </label>
+                )
+              )}
+            </div>
+          </div>
+
+          {/* Secondary Subcategories */}
+          <div className="md:col-span-2 flex flex-col gap-1">
+            <label className="text-sm text-gray-700 font-medium">
+              Secondary Subcategories
+            </label>
+            <select
+              multiple
+              value={draft.secondarySubcategories || []}
+              onChange={(e) => {
+                const selected = Array.from(
+                  e.target.selectedOptions
+                ).map((opt) => opt.value);
+                setDraft({
+                  ...draft,
+                  secondarySubcategories: selected,
+                });
+              }}
+              className="border p-2 rounded h-28"
+            >
+              {secondarySubcategoryOptions.map((sub) => (
+                <option key={sub} value={sub}>
+                  {sub}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500">
+              Hold Ctrl/Cmd to select multiple.
+            </p>
+          </div>
+
 
           {/* Image URL */}
           <input

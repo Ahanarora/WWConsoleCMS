@@ -84,6 +84,9 @@ export interface Draft {
   overview: string;
   category: string;
   subcategory: string;
+  secondaryCategories?: string[];
+  secondarySubcategories?: string[];
+  allCategories?: string[];
   tags: string[];
   imageUrl?: string;
   sources: string[];
@@ -122,10 +125,25 @@ export interface Draft {
 // 🔹 Firestore CRUD Functions
 // ---------------------------
 
+const buildAllCategories = (
+  primary?: string,
+  secondary: string[] = []
+): string[] => {
+  const merged = [primary, ...(secondary || [])].filter(
+    (c): c is string => !!c && c.trim().length > 0
+  );
+  return Array.from(new Set(merged.map((c) => c.trim())));
+};
+
 /** Create a new draft with default fields */
 const normalizeDraft = (data: Draft): Draft => ({
   ...data,
   isPinned: data.isPinned ?? data.isPinnedFeatured ?? false,
+  secondaryCategories: data.secondaryCategories || [],
+  secondarySubcategories: data.secondarySubcategories || [],
+  allCategories:
+    data.allCategories ||
+    buildAllCategories(data.category, data.secondaryCategories || []),
 });
 
 export const createDraft = async (data: Partial<Draft>) => {
@@ -135,6 +153,11 @@ export const createDraft = async (data: Partial<Draft>) => {
     overview: data.overview || "",
     category: data.category || "",
     subcategory: data.subcategory || "",
+    secondaryCategories: data.secondaryCategories || [],
+    secondarySubcategories: data.secondarySubcategories || [],
+    allCategories:
+      data.allCategories ||
+      buildAllCategories(data.category, data.secondaryCategories || []),
     tags: data.tags || [],
     imageUrl: data.imageUrl || "",
     sources: data.sources || [],
@@ -198,10 +221,17 @@ export const fetchDraft = async (id: string): Promise<Draft | null> => {
 /** Generic partial update with merge support */
 export const updateDraft = async (id: string, patch: Partial<Draft>) => {
   const ref = doc(db, "drafts", id);
+  const mergedAllCategories = buildAllCategories(
+    patch.category,
+    patch.secondaryCategories || []
+  );
   await setDoc(
     ref,
     {
       ...patch,
+      ...(patch.category || patch.secondaryCategories
+        ? { allCategories: mergedAllCategories }
+        : {}),
       updatedAt: serverTimestamp(), // ⭐ do NOT overwrite createdAt
     },
     { merge: true }
@@ -303,9 +333,13 @@ export const publishDraft = async (id: string) => {
 
   const collectionName = draft.type === "Story" ? "stories" : "themes";
   const publishRef = doc(db, collectionName, slug);
+  const allCategories = draft.allCategories?.length
+    ? draft.allCategories
+    : buildAllCategories(draft.category, draft.secondaryCategories || []);
 
   await setDoc(publishRef, {
     ...draft,
+    allCategories,
     sources: allSources,
     publishedAt: serverTimestamp(),
     createdAt: draft.createdAt || serverTimestamp(),   // ⭐ preserve original
