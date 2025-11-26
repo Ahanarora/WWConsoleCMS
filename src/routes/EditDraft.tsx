@@ -23,8 +23,19 @@ import { fetchEventCoverage } from "../api/fetchEventCoverage";
 import { renderLinkedText } from "../utils/renderLinkedText.tsx";
 import { uploadToCloudinary } from "../utils/cloudinaryUpload";
 
+function getFactCheckDotColor(score: number): string {
+  if (score >= 85) return "#16a34a"; // green
+  if (score >= 70) return "#eab308"; // yellow
+  if (score >= 50) return "#f97316"; // orange
+  return "#dc2626"; // red
+}
 
-
+function getFactCheckBadgeClass(score: number): string {
+  if (score >= 85) return "bg-green-100 text-green-800";
+  if (score >= 70) return "bg-yellow-100 text-yellow-800";
+  if (score >= 50) return "bg-orange-100 text-orange-800";
+  return "bg-red-100 text-red-800";
+}
 
 export default function EditDraft() {
   const { id } = useParams<{ id: string }>();
@@ -38,6 +49,8 @@ export default function EditDraft() {
   const [selectionMap, setSelectionMap] = useState<
     Record<string, { start: number; end: number }>
   >({});
+  const [isFactCheckModalOpen, setIsFactCheckModalOpen] = useState(false);
+  const [factCheckJson, setFactCheckJson] = useState("");
 
 
   const [imageOptions, setImageOptions] = useState<string[]>([]);
@@ -55,6 +68,124 @@ export default function EditDraft() {
     phases: data.phases || [],
     isPinned: data.isPinned ?? data.isPinnedFeatured ?? false,
   });
+
+  interface FactCheckResult {
+    id: string;
+    confidenceScore: number;
+    confidenceExplanation: string;
+  }
+
+  const handleCopyEventsForFactCheck = () => {
+    if (!draft || !draft.timeline || draft.timeline.length === 0) {
+      alert("No timeline events to copy.");
+      return;
+    }
+
+    const header = `You are a fact-checking assistant. For each event below, fact-check the explanation using the listed sources and your own browsing.
+
+Return ONLY a JSON array of objects. Each object MUST have:
+- "id": the event id (string, as provided)
+- "confidenceScore": integer from 0 to 100
+- "confidenceExplanation": short 1–3 sentence explanation of why you gave that score (number and credibility of sources, agreement between sources, recency, etc.)
+
+Example of desired output:
+[
+  {
+    "id": "event-1",
+    "confidenceScore": 88,
+    "confidenceExplanation": "Verified by multiple major outlets with consistent details."
+  }
+]
+
+Events:
+`;
+
+    const body = draft.timeline
+      .map((ev: TimelineEvent, idx: number) => {
+        const sourcesText =
+          ev.sources?.map((s) => `- ${s.link || s.title || s.sourceName || ""}`).join("\n") ||
+          "- (no sources listed)";
+
+        return [
+          "#EVENT",
+          `id: ${ev.id ?? `event-${idx + 1}`}`,
+          `title: ${ev.event || ev.title || "(no title)"}`,
+          `explanation: ${ev.description || "(no explanation)"}`,
+          "",
+          "sources:",
+          sourcesText,
+          "",
+        ].join("\n");
+      })
+      .join("\n");
+
+    const fullText = `${header}\n${body}`;
+
+    if (!navigator?.clipboard) {
+      alert("Clipboard not available in this browser.");
+      return;
+    }
+
+    navigator.clipboard
+      .writeText(fullText)
+      .then(() => {
+        alert("All events copied for fact-checking. Paste into ChatGPT.");
+      })
+      .catch((err) => {
+        console.error("Clipboard error", err);
+        alert("Failed to copy to clipboard.");
+      });
+  };
+
+  const handleApplyFactCheckResults = async () => {
+    if (!draft) return;
+
+    try {
+      const parsed = JSON.parse(factCheckJson) as FactCheckResult[];
+
+      if (!Array.isArray(parsed)) {
+        throw new Error("JSON is not an array");
+      }
+
+      const updatedTimeline: TimelineEvent[] = draft.timeline.map((ev, idx) => {
+        const match = parsed.find((item) => item.id === ev.id || item.id === `event-${idx + 1}`);
+        if (!match) return ev;
+
+        return {
+          ...ev,
+          factCheck: {
+            confidenceScore: match.confidenceScore,
+            explanation: match.confidenceExplanation,
+            lastCheckedAt: Date.now(),
+          },
+        };
+      });
+
+      const updatedDraft: Draft = {
+        ...draft,
+        timeline: updatedTimeline,
+      };
+
+      setSaving(true);
+      const targetId = draft.id || id;
+      if (!targetId) {
+        throw new Error("Draft id missing.");
+      }
+      await updateDraft(targetId, { timeline: updatedTimeline });
+      setDraft(updatedDraft);
+      setIsFactCheckModalOpen(false);
+      setFactCheckJson("");
+
+      alert("Fact-check data applied to events.");
+    } catch (err) {
+      console.error(err);
+      alert(
+        "Could not parse JSON. Make sure you pasted valid JSON array with id, confidenceScore, and confidenceExplanation."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const shiftPhasesAfterRemoval = (
     phases: Draft["phases"] = [],
@@ -401,6 +532,7 @@ const handleCloudinaryUpload = async () => {
   if (!draft) return <div className="p-6 text-red-500">Draft not found</div>;
 
   return (
+    <>
     <div className="p-6 max-w-6xl mx-auto space-y-8">
       {/* HEADER */}
       <div className="flex justify-between items-center mb-4">
@@ -776,6 +908,24 @@ np
       </button>
 
 
+      <button
+        type="button"
+        className="px-3 py-1 rounded bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50"
+        onClick={handleCopyEventsForFactCheck}
+        disabled={!draft || !draft.timeline || draft.timeline.length === 0}
+      >
+        Copy Events for Fact-Check
+      </button>
+
+      <button
+        type="button"
+        className="px-3 py-1 rounded border border-blue-600 text-blue-600 text-sm hover:bg-blue-50 disabled:opacity-50"
+        onClick={() => setIsFactCheckModalOpen(true)}
+        disabled={!draft || !draft.timeline || draft.timeline.length === 0}
+      >
+        Apply Fact-Check Results
+      </button>
+
       {/* ➕ Add Event */}
       <button
         onClick={handleAddEvent}
@@ -1032,6 +1182,38 @@ np
 <div className="text-sm text-gray-700 mt-2">
 {renderLinkedText(ev.description ?? "")}
 </div>
+
+              {ev.factCheck && typeof ev.factCheck.confidenceScore === "number" && (
+                <div className="mt-3 text-xs text-gray-700 border-t pt-2 border-dashed border-gray-200">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span
+                      className={
+                        "inline-flex items-center px-2 py-0.5 rounded-full font-semibold " +
+                        getFactCheckBadgeClass(ev.factCheck.confidenceScore)
+                      }
+                    >
+                      {ev.factCheck.confidenceScore}% fact-check confidence
+                    </span>
+                    <span
+                      className="w-2.5 h-2.5 rounded-full"
+                      style={{
+                        backgroundColor: getFactCheckDotColor(
+                          ev.factCheck.confidenceScore
+                        ),
+                      }}
+                    ></span>
+                  </div>
+                  {ev.factCheck.explanation && (
+                    <p className="leading-snug">{ev.factCheck.explanation}</p>
+                  )}
+                  {ev.factCheck.lastCheckedAt && (
+                    <p className="mt-1 text-[10px] text-gray-400">
+                      Last checked:{" "}
+                      {new Date(ev.factCheck.lastCheckedAt).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* 🧠 Context Explainers for this Event */}
 <div className="mt-2">
@@ -1658,8 +1840,54 @@ np
         className="mt-4 bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
       >
         💾 Save Analysis
-         </button>
+      </button>
     </div>
   </div>
-);
+    {isFactCheckModalOpen && (
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
+        <div className="bg-white rounded-lg shadow-lg w-full max-w-2xl p-4">
+          <h2 className="text-lg font-semibold mb-2">Apply Fact-Check Results</h2>
+          <p className="text-sm text-gray-600 mb-3">
+            Paste the JSON array returned by ChatGPT. Each item should include
+            <code className="bg-gray-100 px-1 mx-1 rounded">id</code>,
+            <code className="bg-gray-100 px-1 mx-1 rounded">confidenceScore</code>
+            and
+            <code className="bg-gray-100 px-1 mx-1 rounded">
+              confidenceExplanation
+            </code>
+            .
+          </p>
+
+          <textarea
+            className="w-full h-64 border rounded p-2 font-mono text-xs"
+            value={factCheckJson}
+            onChange={(e) => setFactCheckJson(e.target.value)}
+            placeholder='[{"id":"event-1","confidenceScore":88,"confidenceExplanation":"..."}]'
+          />
+
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              className="px-3 py-1 rounded border text-sm"
+              onClick={() => {
+                setIsFactCheckModalOpen(false);
+                setFactCheckJson("");
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="px-3 py-1 rounded bg-blue-600 text-white text-sm"
+              onClick={handleApplyFactCheckResults}
+              disabled={saving}
+            >
+              {saving ? "Applying..." : "Apply"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
+  );
 }

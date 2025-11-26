@@ -33,6 +33,7 @@ export interface SourceItem {
  * ⭐ TimelineEvent now supports normal events + phases
  */
 export interface TimelineEvent {
+  id?: string;
   phase?: boolean;
   title?: string;
 
@@ -44,6 +45,11 @@ export interface TimelineEvent {
   sourceLink?: string;
   sources?: SourceItem[];
   contexts?: { term: string; explainer: string }[];
+  factCheck?: {
+    confidenceScore: number;
+    explanation: string;
+    lastCheckedAt: number;
+  };
 }
 
 // ---------------------------
