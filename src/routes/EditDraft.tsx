@@ -25,7 +25,7 @@ import { uploadToCloudinary } from "../utils/cloudinaryUpload";
 
 const CATEGORY_OPTIONS = [
   {
-    value: "POLITICS",
+    value: "Politics",
     subcategories: [
       "Elections & Power Transitions",
       "Government Policies & Bills",
@@ -34,7 +34,7 @@ const CATEGORY_OPTIONS = [
     ],
   },
   {
-    value: "BUSINESS & ECONOMY",
+    value: "Business & Economy",
     subcategories: [
       "Macroeconomy",
       "Industries",
@@ -44,7 +44,7 @@ const CATEGORY_OPTIONS = [
     ],
   },
   {
-    value: "WORLD",
+    value: "World",
     subcategories: [
       "International Conflicts",
       "Global Governance",
@@ -55,7 +55,7 @@ const CATEGORY_OPTIONS = [
     ],
   },
   {
-    value: "INDIA",
+    value: "India",
     subcategories: [
       "Social Issues",
       "Infrastructure & Development",
@@ -63,6 +63,13 @@ const CATEGORY_OPTIONS = [
     ],
   },
 ];
+const CATEGORY_VALUES = CATEGORY_OPTIONS.map((c) => c.value.toLowerCase());
+
+const parseTags = (value: string): string[] =>
+  value
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
 
 function getFactCheckDotColor(score: number): string {
   if (score >= 85) return "#16a34a"; // green
@@ -109,11 +116,18 @@ export default function EditDraft() {
   ) => {
     const merged = [primary, ...(secondary || [])]
       .filter((c): c is string => !!c && c.trim().length > 0)
-      .map((c) => c.trim());
+      .map((c) => normalizeCategoryValue(c.trim()));
     return Array.from(new Set(merged));
   };
 
   const uniq = (arr: string[]) => Array.from(new Set(arr));
+  const normalizeCategoryValue = (value?: string) => {
+    if (!value) return value;
+    const found = CATEGORY_OPTIONS.find(
+      (c) => c.value.toLowerCase() === value.toLowerCase()
+    );
+    return found ? found.value : value;
+  };
 
   const primarySubcategories =
     CATEGORY_OPTIONS.find((c) => c.value === draft?.category)?.subcategories ||
@@ -168,11 +182,15 @@ export default function EditDraft() {
     timeline: data.timeline || [],
     phases: data.phases || [],
     isPinned: data.isPinned ?? data.isPinnedFeatured ?? false,
-    secondaryCategories: data.secondaryCategories || [],
+    category: normalizeCategoryValue(data.category),
+    secondaryCategories: (data.secondaryCategories || []).map(
+      (c) => normalizeCategoryValue(c) || c
+    ),
     secondarySubcategories: data.secondarySubcategories || [],
     allCategories:
       data.allCategories ||
       computeAllCategories(data.category, data.secondaryCategories || []),
+    tags: data.tags || [],
   });
 
   interface FactCheckResult {
@@ -416,6 +434,13 @@ useEffect(() => {
     if (!draft) return;
     const { name, value } = e.target;
     setDraft({ ...draft, [name]: value });
+    setUnsaved(true);
+  };
+
+  const handleTagsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!draft) return;
+    setDraft({ ...draft, tags: parseTags(e.target.value) });
+    setUnsaved(true);
   };
 
   // ----------------------------
@@ -787,6 +812,21 @@ const handleCloudinaryUpload = async () => {
             </select>
             <p className="text-xs text-gray-500">
               Hold Ctrl/Cmd to select multiple.
+            </p>
+          </div>
+
+          {/* Tags */}
+          <div className="md:col-span-2 flex flex-col gap-1">
+            <label className="text-sm text-gray-700 font-medium">Tags</label>
+            <input
+              type="text"
+              value={(draft.tags || []).join(", ")}
+              onChange={handleTagsChange}
+              placeholder="Comma-separated tags (e.g. politics, elections, policy)"
+              className="border p-2 rounded"
+            />
+            <p className="text-xs text-gray-500">
+              Saved as a tag list; you can decide how to use them later.
             </p>
           </div>
 
