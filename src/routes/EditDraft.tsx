@@ -112,23 +112,24 @@ export default function EditDraft() {
   const [loadingTimeline, setLoadingTimeline] = useState(false);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
 
-  const computeAllCategories = (
-    primary?: string,
-    secondary: string[] = []
-  ) => {
-    const merged = [primary, ...(secondary || [])]
-      .filter((c): c is string => !!c && c.trim().length > 0)
-      .map((c) => normalizeCategoryValue(c.trim()));
-    return Array.from(new Set(merged));
-  };
-
   const uniq = (arr: string[]) => Array.from(new Set(arr));
-  const normalizeCategoryValue = (value?: string) => {
-    if (!value) return value;
+  const normalizeCategoryValue = (value?: string): string => {
+    if (!value) return "";
     const found = CATEGORY_OPTIONS.find(
       (c) => c.value.toLowerCase() === value.toLowerCase()
     );
     return found ? found.value : value;
+  };
+
+  const computeAllCategories = (
+    primary?: string,
+    secondary: string[] = []
+  ): string[] => {
+    const merged = [primary, ...(secondary || [])]
+      .filter((c): c is string => !!c?.trim?.().length)
+      .map((c) => normalizeCategoryValue(c.trim()))
+      .filter(Boolean);
+    return Array.from(new Set(merged));
   };
 
   const primarySubcategories =
@@ -185,12 +186,12 @@ export default function EditDraft() {
     phases: data.phases || [],
     isPinned: data.isPinned ?? data.isPinnedFeatured ?? false,
     category: normalizeCategoryValue(data.category),
-    secondaryCategories: (data.secondaryCategories || []).map(
-      (c) => normalizeCategoryValue(c) || c
-    ),
-    secondarySubcategories: data.secondarySubcategories || [],
+    secondaryCategories: (data.secondaryCategories || [])
+      .map((c) => normalizeCategoryValue(c) || "")
+      .filter(Boolean),
+    secondarySubcategories: (data.secondarySubcategories || []).filter(Boolean),
     allCategories:
-      data.allCategories ||
+      data.allCategories?.filter(Boolean) ||
       computeAllCategories(data.category, data.secondaryCategories || []),
     tags: data.tags || [],
     cardDescription: normalizeText(data.cardDescription),
@@ -481,12 +482,15 @@ const handleCloudinaryUpload = async () => {
         draft.category,
         draft.secondaryCategories || []
       );
-      const payload = { ...draft, allCategories };
+      const payload = {
+        ...draft,
+        allCategories: (allCategories || []).filter(Boolean),
+      };
       setDraft(payload);
       await updateDraft(id, payload);
       setUnsaved(false);
       alert("✅ Metadata saved");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       alert("❌ Failed to save metadata: " + (err?.message || "Unknown error"));
     } finally {
