@@ -219,6 +219,9 @@ export default function DraftsThemes() {
                   <p className="text-sm text-gray-500">
                     {draft.category} • {draft.subcategory || "—"} • {draft.status}
                   </p>
+                  <p className="text-sm text-gray-600 line-clamp-2">
+                    {draft.cardDescription || draft.overview || ""}
+                  </p>
                   <p className="text-xs text-gray-400 font-mono">ID: {draft.id}</p>
                 </div>
 

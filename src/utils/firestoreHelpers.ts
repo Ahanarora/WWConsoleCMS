@@ -93,6 +93,14 @@ export interface Draft {
 
   timeline: TimelineEvent[];
 
+  // Universal card description (used for card previews)
+  cardDescription?: string;
+
+  // Card descriptions per surface
+  cardDescriptionHome?: string;
+  cardDescriptionTheme?: string;
+  cardDescriptionStory?: string;
+
   analysis?: Partial<AnalysisSection>;
 
   phases?: {
@@ -163,6 +171,14 @@ export const createDraft = async (data: Partial<Draft>) => {
     sources: data.sources || [],
 
     timeline: [],
+
+    // Card previews
+    cardDescription: data.cardDescription || "",
+
+    // Card descriptions (separate from overview)
+    cardDescriptionHome: data.cardDescriptionHome || "",
+    cardDescriptionTheme: data.cardDescriptionTheme || "",
+    cardDescriptionStory: data.cardDescriptionStory || "",
 
     analysis: { stakeholders: [], faqs: [], future: [] },
     disableDepthToggle: data.disableDepthToggle || false,
@@ -238,9 +254,37 @@ export const updateDraft = async (id: string, patch: Partial<Draft>) => {
   );
 };
 
-/** Delete draft */
+/** Delete draft and any published doc (stories/themes) that matches its slug */
 export const deleteDraft = async (id: string) => {
-  await deleteDoc(doc(db, "drafts", id));
+  const draftRef = doc(db, "drafts", id);
+  const snap = await getDoc(draftRef);
+
+  if (snap.exists()) {
+    const data = snap.data() as Draft;
+    const slug =
+      data.slug ||
+      (data.title
+        ? data.title.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, "")
+        : id);
+    const collectionName = data.type === "Story" ? "stories" : "themes";
+
+    try {
+      await deleteDoc(doc(db, collectionName, slug));
+    } catch (err) {
+      console.warn("⚠️ Failed to delete published doc (ignoring):", err);
+    }
+
+    // Also attempt delete by draft ID in case the published doc used the ID as key
+    if (slug !== id) {
+      try {
+        await deleteDoc(doc(db, collectionName, id));
+      } catch (err) {
+        console.warn("⚠️ Failed to delete published doc by ID (ignoring):", err);
+      }
+    }
+  }
+
+  await deleteDoc(draftRef);
 };
 
 // ---------------------------

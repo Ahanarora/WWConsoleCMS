@@ -71,6 +71,8 @@ const parseTags = (value: string): string[] =>
     .map((tag) => tag.trim())
     .filter(Boolean);
 
+const normalizeText = (value?: string) => value || "";
+
 function getFactCheckDotColor(score: number): string {
   if (score >= 85) return "#16a34a"; // green
   if (score >= 70) return "#eab308"; // yellow
@@ -191,6 +193,10 @@ export default function EditDraft() {
       data.allCategories ||
       computeAllCategories(data.category, data.secondaryCategories || []),
     tags: data.tags || [],
+    cardDescription: normalizeText(data.cardDescription),
+    cardDescriptionHome: normalizeText(data.cardDescriptionHome),
+    cardDescriptionTheme: normalizeText(data.cardDescriptionTheme),
+    cardDescriptionStory: normalizeText(data.cardDescriptionStory),
   });
 
   interface FactCheckResult {
@@ -812,6 +818,24 @@ const handleCloudinaryUpload = async () => {
             </select>
             <p className="text-xs text-gray-500">
               Hold Ctrl/Cmd to select multiple.
+            </p>
+          </div>
+
+          {/* Universal Card Description */}
+          <div className="md:col-span-2 flex flex-col gap-1">
+            <label className="text-sm text-gray-700 font-medium">
+              Card Preview (all screens)
+            </label>
+            <textarea
+              name="cardDescription"
+              value={draft.cardDescription || ""}
+              onChange={handleMetadataChange}
+              placeholder="Short blurb shown under the title on cards (used instead of Overview)"
+              rows={3}
+              className="border p-2 rounded"
+            />
+            <p className="text-xs text-gray-500">
+              Leave blank to fall back to the overview.
             </p>
           </div>
 
