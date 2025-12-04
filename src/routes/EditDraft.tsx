@@ -101,6 +101,7 @@ export default function EditDraft() {
   >({});
   const [isFactCheckModalOpen, setIsFactCheckModalOpen] = useState(false);
   const [factCheckJson, setFactCheckJson] = useState("");
+  const [tagsInput, setTagsInput] = useState("");
 
 
   const [imageOptions, setImageOptions] = useState<string[]>([]);
@@ -407,7 +408,9 @@ Events:
       try {
         if (!id) return;
         const data = await fetchDraft(id);
-        setDraft(data ? ensureDraftShape(data) : null);
+        const shaped = data ? ensureDraftShape(data) : null;
+        setDraft(shaped);
+        setTagsInput((shaped?.tags || []).join(", "));
       } catch (err) {
         console.error(err);
         alert("Failed to load draft.");
@@ -445,9 +448,12 @@ useEffect(() => {
   };
 
   const handleTagsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!draft) return;
-    setDraft({ ...draft, tags: parseTags(e.target.value) });
+    setTagsInput(e.target.value);
     setUnsaved(true);
+  };
+
+  const commitTags = (value: string) => {
+    setDraft((prev) => (prev ? { ...prev, tags: parseTags(value) } : prev));
   };
 
   // ----------------------------
@@ -482,9 +488,11 @@ const handleCloudinaryUpload = async () => {
         draft.category,
         draft.secondaryCategories || []
       );
+      const parsedTags = parseTags(tagsInput);
       const payload = {
         ...draft,
         allCategories: (allCategories || []).filter(Boolean),
+        tags: parsedTags,
       };
       setDraft(payload);
       await updateDraft(id, payload);
@@ -848,8 +856,9 @@ const handleCloudinaryUpload = async () => {
             <label className="text-sm text-gray-700 font-medium">Tags</label>
             <input
               type="text"
-              value={(draft.tags || []).join(", ")}
+              value={tagsInput}
               onChange={handleTagsChange}
+              onBlur={() => commitTags(tagsInput)}
               placeholder="Comma-separated tags (e.g. politics, elections, policy)"
               className="border p-2 rounded"
             />
