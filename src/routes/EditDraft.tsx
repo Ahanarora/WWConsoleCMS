@@ -667,7 +667,16 @@ const handleCloudinaryUpload = async () => {
 
         await updateTimelineEvent(id, i, updatedEvent);
         const updatedTimeline = [...draft.timeline];
-        setDraft({ ...draft, timeline: updatedTimeline });
+        updatedTimeline[i] = updatedEvent;
+
+        // Refresh from Firestore if possible to stay in sync
+        const refreshed = await fetchDraft(id);
+        if (refreshed) {
+          setDraft(ensureDraftShape(refreshed as Draft));
+        } else {
+          setDraft(ensureDraftShape({ ...draft, timeline: updatedTimeline }));
+        }
+        setUnsaved(true);
 
         alert(`✅ Found ${result.sources.length} sources for "${ev.event}"`);
       } else {
