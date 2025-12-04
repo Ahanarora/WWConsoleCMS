@@ -45,6 +45,7 @@ export interface TimelineEvent {
   sourceLink?: string;
   sources?: SourceItem[];
   contexts?: { term: string; explainer: string }[];
+  faqs?: { question: string; answer: string }[];
   factCheck?: {
     confidenceScore: number;
     explanation: string;
@@ -318,6 +319,7 @@ export const addTimelineEvent = async (
       sourceLink: eventData.sourceLink || "",
       sources: eventData.sources || [],
       contexts: eventData.contexts || [],
+      faqs: eventData.faqs || [],
     };
   }
 

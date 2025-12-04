@@ -580,6 +580,7 @@ const handleCloudinaryUpload = async () => {
       sourceLink: "",
       sources: [],
       contexts: [],
+      faqs: [],
     };
 
     const updatedTimeline = [...(draft.timeline || []), newItem];
@@ -1613,10 +1614,70 @@ np
       setSaving(false);
     }
   }}
-  className="text-purple-600 text-xs hover:underline mt-2 block"
+                        className="text-purple-600 text-xs hover:underline mt-2 block"
 >
   ✨ Generate Explainers for this Event
 </button>
+
+              {/* Event FAQs */}
+              <div className="mt-3">
+                <h4 className="text-sm font-medium mb-2">Event FAQs</h4>
+                {(ev.faqs || []).map((faq, faqIdx) => (
+                  <div
+                    key={faqIdx}
+                    className="flex flex-col md:flex-row gap-2 mb-2"
+                  >
+                    <input
+                      type="text"
+                      value={faq.question || ""}
+                      onChange={(e) => {
+                        const nextFaqs = [...(ev.faqs || [])];
+                        nextFaqs[faqIdx] = {
+                          ...nextFaqs[faqIdx],
+                          question: e.target.value,
+                        };
+                        handleUpdateEvent(i, "faqs", nextFaqs);
+                      }}
+                      placeholder="Question"
+                      className="border p-2 rounded flex-1"
+                    />
+                    <textarea
+                      value={faq.answer || ""}
+                      onChange={(e) => {
+                        const nextFaqs = [...(ev.faqs || [])];
+                        nextFaqs[faqIdx] = {
+                          ...nextFaqs[faqIdx],
+                          answer: e.target.value,
+                        };
+                        handleUpdateEvent(i, "faqs", nextFaqs);
+                      }}
+                      placeholder="Answer"
+                      rows={2}
+                      className="border p-2 rounded flex-[2]"
+                    />
+                    <button
+                      onClick={() => {
+                        const nextFaqs = (ev.faqs || []).filter(
+                          (_, idx) => idx !== faqIdx
+                        );
+                        handleUpdateEvent(i, "faqs", nextFaqs);
+                      }}
+                      className="text-red-600 text-sm hover:underline self-start"
+                    >
+                      ✖
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={() => {
+                    const nextFaqs = [...(ev.faqs || []), { question: "", answer: "" }];
+                    handleUpdateEvent(i, "faqs", nextFaqs);
+                  }}
+                  className="text-blue-600 text-sm hover:underline"
+                >
+                  ➕ Add FAQ
+                </button>
+              </div>
 
               <label className="block text-sm text-gray-600 mb-1">
                 Importance
