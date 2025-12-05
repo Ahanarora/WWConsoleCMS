@@ -22,6 +22,8 @@ import {
 import { fetchEventCoverage } from "../api/fetchEventCoverage";
 import { renderLinkedText } from "../utils/renderLinkedText.tsx";
 import { uploadToCloudinary } from "../utils/cloudinaryUpload";
+import { getFaviconUrl, getFallbackFavicon, getInitials } from "../utils/getFaviconUrl";
+
 
 const CATEGORY_OPTIONS = [
   {
@@ -1749,18 +1751,38 @@ np
                         key={idx}
                         className="flex items-center space-x-3 border p-2 rounded-md hover:bg-gray-50"
                       >
-                        {s.imageUrl && (
-                          <img
-                            src={s.imageUrl}
-                            alt={s.title}
-                            className="w-10 h-10 object-cover rounded"
-                            onError={(e) => {
-                              e.currentTarget.src = `${new URL(
-                                s.link
-                              ).origin}/favicon.ico`;
-                            }}
-                          />
-                        )}
+                        {(() => {
+  const faviconKit = getFaviconUrl(s.link);
+  const fallback = getFallbackFavicon(s.link);
+  const initials = getInitials(s.sourceName || s.title || "");
+
+  return (
+    <>
+      {/* FaviconKit → fallback → initials */}
+      <img
+        src={faviconKit || ""}
+        className="w-10 h-10 object-cover rounded bg-gray-100"
+        onError={(e) => {
+          if (e.currentTarget.src !== fallback) {
+            e.currentTarget.src = fallback || "";
+          } else {
+            e.currentTarget.style.display = "none";
+          }
+        }}
+        style={{ display: faviconKit ? "block" : "none" }}
+        alt={s.sourceName || "source"}
+      />
+
+      {/* If favicon hidden → show initials */}
+      {!faviconKit && (
+        <div className="w-10 h-10 rounded bg-gray-800 text-white flex items-center justify-center">
+          {initials}
+        </div>
+      )}
+    </>
+  );
+})()}
+
                         <div className="flex flex-col">
                           <a
                             href={s.link}
