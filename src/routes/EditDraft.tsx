@@ -12,12 +12,14 @@ import {
 } from "../utils/firestoreHelpers";
 import type { Draft, TimelineEvent } from "../utils/firestoreHelpers";
 import {
-  generateTimeline,
   generateAnalysis,
   generateExplainersForEvent,
   generateContextsForTimelineEvent,
   generateContextsForAnalysis,
 } from "../utils/gptHelpers";
+
+import { fetchSonarTimelineForDraft } from "../api/fetchSonarTimeline";
+
 
 import { fetchEventCoverage } from "../api/fetchEventCoverage";
 import { renderLinkedText } from "../utils/renderLinkedText.tsx";
@@ -116,6 +118,7 @@ export default function EditDraft() {
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
 
   const uniq = (arr: string[]) => Array.from(new Set(arr));
+  // Normalize categories to canonical strings and strip empties
   const normalizeCategoryValue = (value?: string): string => {
     if (!value) return "";
     const found = CATEGORY_OPTIONS.find(
@@ -128,6 +131,7 @@ export default function EditDraft() {
     primary?: string,
     secondary: string[] = []
   ): string[] => {
+    // Merge primary + secondary, normalize, drop blanks, dedupe
     const merged = [primary, ...(secondary || [])]
       .filter((c): c is string => !!c?.trim?.().length)
       .map((c) => normalizeCategoryValue(c.trim()))
@@ -185,6 +189,7 @@ export default function EditDraft() {
 
   const ensureDraftShape = (data: Draft): Draft => ({
     ...data,
+    // Guard against missing arrays/flags and keep categories normalized
     timeline: data.timeline || [],
     phases: data.phases || [],
     isPinned: data.isPinned ?? data.isPinnedFeatured ?? false,
@@ -486,6 +491,7 @@ const handleCloudinaryUpload = async () => {
     if (!draft || !id) return;
     try {
       setSaving(true);
+      // Recompute canonical categories and persist tags from freeform input
       const allCategories = computeAllCategories(
         draft.category,
         draft.secondaryCategories || []
@@ -534,22 +540,39 @@ const handleCloudinaryUpload = async () => {
   // ----------------------------
   // GPT HANDLERS
   // ----------------------------
-  const handleGenerateTimeline = async () => {
-    if (!draft || !id) return;
-    setLoadingTimeline(true);
-    try {
-      const timeline = await generateTimeline(draft);
-      await updateDraft(id, { timeline });
-      const updated = await fetchDraft(id);
-      setDraft(updated ? ensureDraftShape(updated) : null);
-      alert("✅ Timeline generated successfully!");
-    } catch (err: any) {
-      console.error(err);
-      alert("❌ Failed to generate timeline: " + err.message);
-    } finally {
-      setLoadingTimeline(false);
-    }
-  };
+const handleGenerateTimeline = async () => {
+  if (!draft || !id) return;
+
+  setLoadingTimeline(true);
+
+  try {
+    // 1) Call Sonar via Cloud Function
+    const newTimeline = await fetchSonarTimelineForDraft(draft);
+
+    // 2) Save into draft (same shape as before)
+    const updatedDraft: Draft = {
+      ...draft,
+      timeline: newTimeline,
+      updatedAt: new Date().toISOString(),
+    };
+
+    setDraft(updatedDraft);
+
+    await updateDraft(id, {
+      timeline: newTimeline,
+      updatedAt: updatedDraft.updatedAt,
+    });
+
+    setUnsaved(false);
+    alert("✅ Timeline generated with Sonar and saved.");
+  } catch (err: any) {
+    console.error("Failed to generate timeline with Sonar:", err);
+    alert("❌ Failed to generate timeline: " + (err.message || "Unknown error"));
+  } finally {
+    setLoadingTimeline(false);
+  }
+};
+
 
   const handleGenerateAnalysis = async () => {
     if (!draft || !id) return;
@@ -671,7 +694,7 @@ const handleCloudinaryUpload = async () => {
         const updatedTimeline = [...draft.timeline];
         updatedTimeline[i] = updatedEvent;
 
-        // Refresh from Firestore if possible to stay in sync
+        // Refresh from Firestore so UI and persistence match after auto-fetch
         const refreshed = await fetchDraft(id);
         if (refreshed) {
           setDraft(ensureDraftShape(refreshed as Draft));
