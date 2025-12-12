@@ -27,6 +27,8 @@ export interface SourceItem {
   sourceName: string;
   pubDate?: string;
   score?: number;
+  provider?: "sonar" | "serper";
+
 }
 
 /**

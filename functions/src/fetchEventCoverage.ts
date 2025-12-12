@@ -2,6 +2,7 @@
 // Firebase Function: fetchEventCoverage (Gen 2)
 // Region: asia-south1 (Mumbai)
 // -----------------------------------------------------
+
 import { onCall } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2";
 import axios from "axios";
@@ -13,6 +14,26 @@ dotenv.config();
 setGlobalOptions({ region: "asia-south1" });
 
 const SERPER_API_KEY = process.env.SERPER_API_KEY;
+
+// -----------------------------------------------------
+// 🔧 Helper: build ±2 day date constraint for Serper
+// -----------------------------------------------------
+function buildSerperDateTBS(dateStr?: string): string | null {
+  if (!dateStr) return null;
+
+  const base = new Date(dateStr);
+  if (isNaN(base.getTime())) return null;
+
+  const min = new Date(base);
+  min.setDate(base.getDate() - 2);
+
+  const max = new Date(base);
+  max.setDate(base.getDate() + 2);
+
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
+  return `cdr:1,cd_min:${fmt(min)},cd_max:${fmt(max)}`;
+}
 
 // -----------------------------------------------------
 // Main Function
@@ -27,6 +48,7 @@ export const fetchEventCoverage = onCall(async (request) => {
       title,
       event,
       description,
+      date,              // ⭐ event date (YYYY-MM-DD)
       region = "in",
       lang = "en",
     } = request.data ?? {};
@@ -39,20 +61,36 @@ export const fetchEventCoverage = onCall(async (request) => {
     console.log("🔍 Query used for Serper:", query);
 
     // -----------------------
+    // 🗓️ Date constraint (±2 days)
+    // -----------------------
+    const tbs = buildSerperDateTBS(date);
+    if (tbs) {
+      console.log("📅 Applying Serper date window:", tbs);
+    } else {
+      console.log("📅 No valid date provided — running unconstrained search");
+    }
+
+    // -----------------------
     // 🌐 SERPER API CALL
     // -----------------------
     console.log("🌐 Attempting Serper API call...");
 
+    const payload: any = {
+      q: query,
+      num: 10,
+      gl: region,
+      hl: lang,
+    };
+
+    // ⭐ apply tbs only if valid date exists
+    if (tbs) {
+      payload.tbs = tbs;
+    }
+
     const start = Date.now();
     const res = await axios.post(
       "https://google.serper.dev/news",
-      {
-        q: query,
-        num: 10,
-        gl: region,
-        hl: lang,
-        // removing tbs for broader searches
-      },
+      payload,
       {
         headers: {
           "X-API-KEY": SERPER_API_KEY,
@@ -75,6 +113,7 @@ export const fetchEventCoverage = onCall(async (request) => {
     // 🗞️ Map and deduplicate
     // -----------------------
     const news = res.data?.news ?? [];
+
     const articles = news.map((n: any) => ({
       title: n.title,
       link: n.link,
@@ -87,17 +126,21 @@ export const fetchEventCoverage = onCall(async (request) => {
       new Map(articles.map((a: any) => [a.link, a])).values()
     );
 
-    console.log(`🧮 Raw count: ${articles.length}, Unique count: ${unique.length}`);
+    console.log(
+      `🧮 Raw count: ${articles.length}, Unique count: ${unique.length}`
+    );
+
     return { sources: unique };
   } catch (err: any) {
     console.error("❌ Error type:", err.name);
     console.error("❌ Error message:", err.message);
     if (err.response) {
       console.error("❌ HTTP error status:", err.response.status);
-      console.error("❌ Response data:", JSON.stringify(err.response.data, null, 2));
+      console.error(
+        "❌ Response data:",
+        JSON.stringify(err.response.data, null, 2)
+      );
     }
     return { sources: [] };
   }
 });
-
-

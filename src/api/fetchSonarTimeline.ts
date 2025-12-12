@@ -55,6 +55,7 @@ export async function fetchSonarTimelineForDraft(
         sourceName: s.sourceName ?? "",
         imageUrl: s.imageUrl ?? "",
         pubDate: s.publishedAt ?? "",
+        provider: "sonar", // ⭐ TAG SOURCE ORIGIN
       })) ?? [],
 
     contexts: [],

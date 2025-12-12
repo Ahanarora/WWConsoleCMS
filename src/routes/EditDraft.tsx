@@ -10,7 +10,8 @@ import {
   publishDraft,
   publishStory,
 } from "../utils/firestoreHelpers";
-import type { Draft, TimelineEvent } from "../utils/firestoreHelpers";
+import type { Draft, TimelineEvent, SourceItem } from "../utils/firestoreHelpers";
+
 import {
   generateAnalysis,
   generateExplainersForEvent,
@@ -684,11 +685,34 @@ const handleGenerateTimeline = async () => {
           imageUrl: s.imageUrl ?? null,
         }));
 
-        const updatedEvent = {
-          ...draft.timeline[i],
-          sources: normalizedSources,
-          imageUrl: normalizedSources[0]?.imageUrl || draft.timeline[i].imageUrl,
-        };
+        const existingSources: SourceItem[] = draft.timeline[i].sources || [];
+
+
+const serperSources: SourceItem[] = normalizedSources.map((s) => ({
+  title: s.title,
+  link: s.link,
+  sourceName: s.sourceName,
+  imageUrl: s.imageUrl ?? null,
+  pubDate: s.pubDate,
+  provider: "serper",
+}));
+
+
+const mergedSources = [
+  ...existingSources,
+  ...serperSources.filter(
+    (s) => !existingSources.some((e) => e.link === s.link)
+  ),
+];
+
+const updatedEvent = {
+  ...draft.timeline[i],
+  sources: mergedSources,
+  imageUrl:
+    mergedSources.find((s) => s.imageUrl)?.imageUrl ||
+    draft.timeline[i].imageUrl,
+};
+
 
         await updateTimelineEvent(id, i, updatedEvent);
         const updatedTimeline = [...draft.timeline];
