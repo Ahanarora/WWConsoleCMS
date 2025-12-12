@@ -22,10 +22,6 @@ interface FetchSonarTimelineResponse {
   }>;
 }
 
-/**
- * Calls Cloud Function fetchSonarTimeline and maps it
- * into your existing TimelineEvent structure.
- */
 export async function fetchSonarTimelineForDraft(
   draft: Draft
 ): Promise<TimelineEvent[]> {
@@ -42,7 +38,7 @@ export async function fetchSonarTimelineForDraft(
   const data = result.data;
   if (!data || !Array.isArray(data.events)) return [];
 
-  const mapped: TimelineEvent[] = data.events.map((ev, index) => ({
+  return data.events.map((ev, index) => ({
     id: `sonar-${index}`,
     date: ev.date ?? "",
     event: ev.title ?? "",
@@ -58,12 +54,10 @@ export async function fetchSonarTimelineForDraft(
         link: s.url ?? "",
         sourceName: s.sourceName ?? "",
         imageUrl: s.imageUrl ?? "",
-        pubDate: s.publishedAt ?? "",   // <-- FIXED: always a string
+        pubDate: s.publishedAt ?? "",
       })) ?? [],
 
     contexts: [],
     faqs: [],
   }));
-
-  return mapped;
 }

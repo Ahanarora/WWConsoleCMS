@@ -14,12 +14,17 @@ interface PromptConfig {
   serper: {
     prompt: string;
   };
+  sonar: {
+    model: string;
+    timelineSystemPrompt: string;
+    timelineUserPromptTemplate: string;
+  };
 }
 
 export default function PromptLab() {
-  const [prompts, setPrompts] = useState<PromptConfig>({
+  const DEFAULT_PROMPTS: PromptConfig = {
     gpt: {
-      timelinePrompt: `You are a precise news editor. 
+      timelinePrompt: `You are a precise news editor.
 Given a topic, generate a concise chronological timeline of 10–15 key events.
 Each event must include:
 - date (YYYY-MM-DD)
@@ -35,30 +40,87 @@ Given a topic and overview, produce three sections:
 Keep all responses factual, under 50 words each. Return valid JSON with key "analysis".`,
     },
     serper: {
-      prompt: "title", // 🔹 Default: use title as search term
+      prompt: "title",
     },
-  });
+    sonar: {
+      model: "sonar",
+      timelineSystemPrompt: `You are a meticulous news researcher.
+You must:
+- Use live web search.
+- Produce an exhaustive but concise chronological timeline.
+- Focus on distinct, real-world events (not analysis).
+- Include both major and important minor events if they move the story.
+- Deduplicate overlapping coverage.
+- Attach multiple reliable sources per event.
+- Prefer recognized and reliable outlets across geographies.
+- Output VALID JSON ONLY, no commentary, no markdown.`,
+      timelineUserPromptTemplate: `Generate a chronological news timeline.
 
+Title: {{title}}
+
+Summary / overview:
+{{overview}}
+
+IMPORTANT RULES:
+- Maximum events: 10–20
+- Keep descriptions under 5 lines each
+- Merge micro-events where necessary
+- DO NOT use ellipses (...). DO NOT include trailing commas.
+- DO NOT output anything except JSON.
+
+JSON FORMAT (MANDATORY):
+{
+  "events": [
+    {
+      "date": "YYYY-MM-DD or null",
+      "title": "string",
+      "description": "string",
+      "importance": 1,
+      "sources": [
+        {
+          "title": "string",
+          "url": "string",
+          "sourceName": "string",
+          "publishedAt": "YYYY-MM-DD or null",
+          "imageUrl": "string or null"
+        }
+      ]
+    }
+  ]
+}`,
+    },
+  };
+
+  const [prompts, setPrompts] = useState<PromptConfig>(DEFAULT_PROMPTS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Load current settings from Firestore
   useEffect(() => {
     (async () => {
       try {
         const ref = doc(db, "settings", "global");
         const snap = await getDoc(ref);
+
         if (snap.exists()) {
           const data = snap.data() as any;
           setPrompts({
             gpt: {
               timelinePrompt:
-                data?.gpt?.timelinePrompt || prompts.gpt.timelinePrompt,
+                data?.gpt?.timelinePrompt ?? DEFAULT_PROMPTS.gpt.timelinePrompt,
               analysisPrompt:
-                data?.gpt?.analysisPrompt || prompts.gpt.analysisPrompt,
+                data?.gpt?.analysisPrompt ?? DEFAULT_PROMPTS.gpt.analysisPrompt,
             },
             serper: {
-              prompt: data?.serper?.prompt || prompts.serper.prompt,
+              prompt: data?.serper?.prompt ?? DEFAULT_PROMPTS.serper.prompt,
+            },
+            sonar: {
+              model: data?.sonar?.model ?? DEFAULT_PROMPTS.sonar.model,
+              timelineSystemPrompt:
+                data?.sonar?.timelineSystemPrompt ??
+                DEFAULT_PROMPTS.sonar.timelineSystemPrompt,
+              timelineUserPromptTemplate:
+                data?.sonar?.timelineUserPromptTemplate ??
+                DEFAULT_PROMPTS.sonar.timelineUserPromptTemplate,
             },
           });
         }
@@ -70,7 +132,6 @@ Keep all responses factual, under 50 words each. Return valid JSON with key "ana
     })();
   }, []);
 
-  // Save all prompt text to Firestore
   const handleSave = async () => {
     try {
       setSaving(true);
@@ -91,7 +152,7 @@ Keep all responses factual, under 50 words each. Return valid JSON with key "ana
     <div className="p-6 max-w-4xl mx-auto space-y-8">
       <h1 className="text-3xl font-bold">🧠 Prompt Editor</h1>
       <p className="text-gray-600 mb-4">
-        Edit the default text templates used by GPT and Serper for content generation.
+        Edit the default text templates used by GPT, Sonar, and Serper.
       </p>
 
       {/* GPT Timeline Prompt */}
@@ -124,13 +185,73 @@ Keep all responses factual, under 50 words each. Return valid JSON with key "ana
         />
       </div>
 
+      {/* Sonar Timeline Prompts */}
+      <div className="bg-white p-6 rounded-lg shadow space-y-4">
+        <h2 className="text-xl font-semibold">
+          Perplexity Sonar — Timeline Prompts
+        </h2>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">Model</label>
+          <input
+            value={prompts.sonar.model}
+            onChange={(e) =>
+              setPrompts({
+                ...prompts,
+                sonar: { ...prompts.sonar, model: e.target.value },
+              })
+            }
+            className="w-full border rounded p-2 text-sm"
+            placeholder="sonar (recommended)"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">
+            Timeline System Prompt
+          </label>
+          <textarea
+            value={prompts.sonar.timelineSystemPrompt}
+            onChange={(e) =>
+              setPrompts({
+                ...prompts,
+                sonar: {
+                  ...prompts.sonar,
+                  timelineSystemPrompt: e.target.value,
+                },
+              })
+            }
+            className="w-full border rounded p-3 h-40 text-sm"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">
+            Timeline User Prompt Template
+          </label>
+          <p className="text-sm text-gray-600">
+            Use placeholders: <code>{"{{title}}"}</code> and{" "}
+            <code>{"{{overview}}"}</code>.
+          </p>
+          <textarea
+            value={prompts.sonar.timelineUserPromptTemplate}
+            onChange={(e) =>
+              setPrompts({
+                ...prompts,
+                sonar: {
+                  ...prompts.sonar,
+                  timelineUserPromptTemplate: e.target.value,
+                },
+              })
+            }
+            className="w-full border rounded p-3 h-56 text-sm"
+          />
+        </div>
+      </div>
+
       {/* Serper Prompt */}
       <div className="bg-white p-6 rounded-lg shadow space-y-4">
         <h2 className="text-xl font-semibold">Serper — Search Prompt</h2>
-        <p className="text-sm text-gray-600">
-          This text defines what query is sent to Serper for event coverage.
-          If left as <code>title</code>, the draft’s event title will be used by default.
-        </p>
         <textarea
           value={prompts.serper.prompt}
           onChange={(e) =>
@@ -140,14 +261,13 @@ Keep all responses factual, under 50 words each. Return valid JSON with key "ana
             })
           }
           className="w-full border rounded p-3 h-24 text-sm"
-          placeholder="Example: Find recent, credible articles about {{topic}}."
         />
       </div>
 
       <button
         onClick={handleSave}
         disabled={saving}
-        className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+        className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50"
       >
         {saving ? "Saving…" : "💾 Save All Prompts"}
       </button>

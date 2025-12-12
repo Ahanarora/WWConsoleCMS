@@ -1,13 +1,22 @@
 // -----------------------------------------------------
 // Firebase Function: fetchSonarTimeline (Gen 2)
 // Uses Perplexity Sonar to generate a chronological timeline
+// PROMPTS ARE LOADED FROM Firestore (PromptLab)
 // -----------------------------------------------------
 
 import { onCall } from "firebase-functions/v2/https";
 import axios from "axios";
 import * as dotenv from "dotenv";
+import * as admin from "firebase-admin";
+import { getFirestore } from "firebase-admin/firestore";
 
 dotenv.config();
+
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
+
+const db = getFirestore();
 
 const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY;
 
@@ -44,11 +53,16 @@ export const fetchSonarTimeline = onCall(async (request) => {
     throw new Error("Title is required for timeline generation");
   }
 
-  // -----------------------
-  // PROMPTS
-  // -----------------------
+  // -------------------------------------------------
+  // LOAD PROMPTS FROM FIRESTORE (PromptLab)
+  // -------------------------------------------------
 
-  const systemPrompt = `
+  const settingsSnap = await db.doc("settings/global").get();
+  const sonarSettings = settingsSnap.data()?.sonar || {};
+
+  const systemPrompt: string =
+    sonarSettings.timelineSystemPrompt ||
+    `
 You are a meticulous news researcher.
 You must:
 - Use live web search.
@@ -57,57 +71,41 @@ You must:
 - Avoid analysis or opinions.
 - Deduplicate overlapping coverage.
 - Always output clean, valid JSON only (no markdown, no comments).
+- Event titles MUST summarize the core real-world action using neutral journalistic language.
 `;
 
-  const userPrompt = `
+  const userPromptTemplate: string =
+    sonarSettings.timelineUserPromptTemplate ||
+    `
 Generate a chronological news timeline.
 
-Title: ${title}
+Title: {{title}}
 
 Summary / overview:
-${overview || "(none provided)"}
+{{overview}}
 
 IMPORTANT RULES:
 - Maximum events: 10–20
 - Keep descriptions under 5 lines each
-- STRICT token budget: DO NOT exceed ~3500 total tokens
 - Merge micro-events where necessary
-- DO NOT use ellipses (...). DO NOT include trailing commas.
 - DO NOT output anything except JSON.
-
-JSON FORMAT (MANDATORY):
-{
-  "events": [
-    {
-      "date": "YYYY-MM-DD or null",
-      "title": "string",
-      "description": "string",
-      "importance": 1,
-      "sources": [
-        {
-          "title": "string",
-          "url": "string",
-          "sourceName": "string",
-          "publishedAt": "YYYY-MM-DD or null",
-          "imageUrl": "string or null"
-        }
-      ]
-    }
-  ]
-}
-
-If data is uncertain, use null. ALWAYS return valid JSON.
 `;
 
-  // -----------------------
-  // HELPER: make Sonar request
-  // -----------------------
+  const userPrompt = userPromptTemplate
+    .replace("{{title}}", title)
+    .replace("{{overview}}", overview || "(none provided)");
+
+  const model = sonarSettings.model || "sonar";
+
+  // -------------------------------------------------
+  // HELPER: call Sonar
+  // -------------------------------------------------
 
   async function callSonar(prompt: string, tokenLimit: number) {
     return axios.post(
       "https://api.perplexity.ai/chat/completions",
       {
-        model: "sonar",       // switched from sonar-pro → sonar
+        model,
         temperature: 0.1,
         max_tokens: tokenLimit,
         messages: [
@@ -120,31 +118,26 @@ If data is uncertain, use null. ALWAYS return valid JSON.
           Authorization: `Bearer ${PERPLEXITY_API_KEY}`,
           "Content-Type": "application/json",
         },
-        timeout: 180000, // 3 min timeout
+        timeout: 180000,
       }
     );
   }
 
-  // -----------------------
+  // -------------------------------------------------
   // PRIMARY ATTEMPT
-  // -----------------------
+  // -------------------------------------------------
+
   let content: string | null = null;
 
   try {
     const start = Date.now();
     const response = await callSonar(userPrompt, 4096);
-
     const elapsed = Date.now() - start;
-    console.log(`✅ Perplexity Sonar responded in ${elapsed} ms`);
-    console.log("🔑 Keys:", Object.keys(response.data || {}));
 
+    console.log(`✅ Sonar responded in ${elapsed} ms`);
     content = response.data?.choices?.[0]?.message?.content || null;
   } catch (err: any) {
     console.error("❌ Sonar API error:", err?.message);
-    if (err.response) {
-      console.error("❌ HTTP status:", err.response.status);
-      console.error("❌ Response data:", JSON.stringify(err.response.data, null, 2));
-    }
     return { events: [] };
   }
 
@@ -153,53 +146,45 @@ If data is uncertain, use null. ALWAYS return valid JSON.
     return { events: [] };
   }
 
-  console.log("RAW_SONAR_OUTPUT_SNIPPET:", content.slice(0, 500));
-
-  // -----------------------
-  // ATTEMPT JSON PARSE
-  // -----------------------
+  // -------------------------------------------------
+  // PARSE JSON (with retry)
+  // -------------------------------------------------
 
   let parsed: SonarTimelineResult | null = null;
 
   try {
     parsed = JSON.parse(content);
-  } catch (err) {
-    console.error("❌ Failed to parse JSON from Sonar, retrying with smaller output…");
-    console.error("Parse error:", err);
-    console.error("Offending snippet:", content.slice(0, 300));
-
-    // SECOND ATTEMPT: shorter output, stricter instructions
+  } catch {
     try {
-      const retryPrompt = userPrompt + `
+      const retry = await callSonar(
+        userPrompt + `
 IMPORTANT OVERRIDE:
-- STRICT LIMIT: No more than 12 events.
-- Descriptions under 3 lines.
-- Output MUST be parseable JSON.
-- ABSOLUTELY NO text outside JSON.
-`;
+- No more than 12 events
+- Short descriptions
+- VALID JSON ONLY
+`,
+        3000
+      );
 
-      const retry = await callSonar(retryPrompt, 3000);
-      const retryContent = retry.data?.choices?.[0]?.message?.content || "";
-
-      console.log("RAW_RETRY_OUTPUT_SNIPPET:", retryContent.slice(0, 500));
-
-      parsed = JSON.parse(retryContent);
-    } catch (parseErr) {
-      console.error("❌ RETRY also failed to parse JSON:", parseErr);
+      parsed = JSON.parse(
+        retry.data?.choices?.[0]?.message?.content || ""
+      );
+    } catch {
+      console.error("❌ JSON parse failed twice");
       return { events: [] };
     }
   }
 
   if (!parsed || !Array.isArray(parsed.events)) {
-    console.error("❌ Parsed JSON missing events[]");
+    console.error("❌ Invalid Sonar output shape");
     return { events: [] };
   }
 
-  // -----------------------
-  // SANITIZATION
-  // -----------------------
+  // -------------------------------------------------
+  // SANITIZE
+  // -------------------------------------------------
 
-  const cleanEvents = parsed.events.map((ev, index) => ({
+  const cleanEvents = parsed.events.map((ev) => ({
     date: ev.date ?? null,
     title: (ev.title || "").trim(),
     description: (ev.description || "").trim(),
@@ -214,6 +199,5 @@ IMPORTANT OVERRIDE:
   }));
 
   console.log(`📚 Timeline events count: ${cleanEvents.length}`);
-
   return { events: cleanEvents };
 });
