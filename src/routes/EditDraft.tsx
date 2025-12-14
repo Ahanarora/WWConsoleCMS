@@ -76,6 +76,13 @@ const parseTags = (value: string): string[] =>
     .map((tag) => tag.trim())
     .filter(Boolean);
 
+const DISPLAY_MODES = [
+  { value: "link-preview", label: "Publisher link preview" },
+  { value: "ai-image", label: "AI / uploaded image" },
+];
+
+
+    
 const normalizeText = (value?: string) => value || "";
 
 function getFactCheckDotColor(score: number): string {
@@ -172,6 +179,8 @@ export default function EditDraft() {
       pinnedCategory: nextPinned,
     });
   };
+
+
 
   const toggleSecondaryCategory = (cat: string, checked: boolean) => {
     if (!draft) return;
@@ -607,6 +616,9 @@ const handleGenerateTimeline = async () => {
       sources: [],
       contexts: [],
       faqs: [],
+      displayMode: "link-preview",
+media: { type: "link-preview", sourceIndex: 0 },
+origin: "external",
     };
 
     const updatedTimeline = [...(draft.timeline || []), newItem];
@@ -711,12 +723,18 @@ const updatedEvent = {
   imageUrl:
     mergedSources.find((s) => s.imageUrl)?.imageUrl ||
     draft.timeline[i].imageUrl,
+    displayMode: draft.timeline[i].displayMode || "link-preview",
+media: draft.timeline[i].media || { type: "link-preview", sourceIndex: 0 },
+origin: draft.timeline[i].origin || "external",
+
 };
 
 
         await updateTimelineEvent(id, i, updatedEvent);
         const updatedTimeline = [...draft.timeline];
         updatedTimeline[i] = updatedEvent;
+
+        
 
         // Refresh from Firestore so UI and persistence match after auto-fetch
         const refreshed = await fetchDraft(id);
@@ -1753,40 +1771,45 @@ np
               </select>
 
               {/* Buttons */}
-              <div className="flex gap-4 items-center mt-2">
-                <button
-                  onClick={() => handleDeleteEvent(i)}
-                  className="text-red-600 text-sm hover:underline"
-                >
-                  Delete
-                </button>
-                <button
-                  onClick={() => handleFetchCoverage(i, ev)}
-                  className="text-blue-600 text-sm hover:underline"
-                >
-                  🔗 Fetch Top Sources
-                </button>
-                <button
-  onClick={async () => {
-    if (!id) return;
-    try {
-      setSaving(true);
-      await updateTimelineEvent(id, i, draft.timeline[i]);
-      setUnsaved(false);
-      alert("✅ Event saved!");
-    } catch (err) {
-      console.error(err);
-      alert("❌ Failed to save event.");
-    } finally {
-      setSaving(false);
-    }
-  }}
-  className="text-green-600 text-sm hover:underline"
->
-  💾 Save Event
-</button>
+<div className="flex gap-4 items-center mt-2">
+  <button
+    onClick={() => handleDeleteEvent(i)}
+    className="text-red-600 text-sm hover:underline"
+  >
+    Delete
+  </button>
 
-              </div>
+  <button
+    onClick={() => handleFetchCoverage(i, ev)}
+    className="text-blue-600 text-sm hover:underline"
+  >
+    🔗 Fetch Top Sources
+  </button>
+
+  
+
+  <button
+    onClick={async () => {
+      if (!id) return;
+      try {
+        setSaving(true);
+        await updateTimelineEvent(id, i, draft.timeline[i]);
+        setUnsaved(false);
+        alert("✅ Event saved!");
+      } catch (err) {
+        console.error(err);
+        alert("❌ Failed to save event.");
+      } finally {
+        setSaving(false);
+      }
+    }}
+    className="text-green-600 text-sm hover:underline"
+  >
+    💾 Save Event
+  </button>
+</div>
+
+
 
               {/* Top Sources */}
               {ev.sources && ev.sources.length > 0 && (
