@@ -1532,6 +1532,46 @@ np
 <div className="text-sm text-gray-700 mt-2">
 {renderLinkedText(ev.description ?? "")}
 </div>
+{/* 📰 Main Preview Link (Publisher Card) */}
+{Array.isArray(ev.sources) && ev.sources.length > 0 && (
+  <div className="mt-4 border-t pt-3 space-y-1">
+    <label className="text-sm font-semibold text-gray-700">
+      Main preview link (shown as card)
+    </label>
+
+    <select
+      value={ev.media?.sourceIndex ?? 0}
+      onChange={async (e) => {
+        const idx = Number(e.target.value);
+
+        await updateTimelineEvent(id!, i, {
+          displayMode: "link-preview",
+          media: {
+            type: "link-preview",
+            sourceIndex: idx,
+          },
+        });
+
+        const refreshed = await fetchDraft(id!);
+        if (refreshed) setDraft(ensureDraftShape(refreshed));
+        setUnsaved(true);
+      }}
+      className="border p-2 rounded w-full"
+    >
+      {ev.sources.map((s, idx) => (
+        <option key={s.link} value={idx}>
+          {idx === (ev.media?.sourceIndex ?? 0) ? "⭐ " : ""}
+          {s.sourceName} — {s.title?.slice(0, 80)}
+        </option>
+      ))}
+    </select>
+
+    <p className="text-xs text-gray-500">
+      This source’s headline and image will be used as the event’s preview card.
+    </p>
+  </div>
+)}
+
 
               {ev.factCheck && typeof ev.factCheck.confidenceScore === "number" && (
                 <div className="mt-3 text-xs text-gray-700 border-t pt-2 border-dashed border-gray-200">
