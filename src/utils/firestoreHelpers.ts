@@ -31,6 +31,24 @@ export interface SourceItem {
 
 }
 
+// ---------------------------
+// 🔹 Event Media & Display
+// ---------------------------
+
+export type EventDisplayMode = "link-preview" | "ai-image";
+
+export interface EventMedia {
+  type: EventDisplayMode;
+
+  // For link preview
+  sourceIndex?: number; // index in sources[]
+
+  // For AI / uploaded image
+  imageUrl?: string;
+  attribution?: string; // "AI-generated" | "Editor uploaded"
+}
+
+
 /**
  * ⭐ TimelineEvent now supports normal events + phases
  */
@@ -53,6 +71,18 @@ export interface TimelineEvent {
     explanation: string;
     lastCheckedAt: number;
   };
+    // ---------------------------
+  // 🔹 WW Presentation Controls
+  // ---------------------------
+
+  origin?: "external" | "ww";
+
+  displayMode?: EventDisplayMode;
+
+  media?: EventMedia;
+
+  isHighlighted?: boolean;
+
 }
 
 // ---------------------------
@@ -92,7 +122,8 @@ export interface Draft {
   allCategories?: string[];
   tags: string[];
   imageUrl?: string;
-  sources: string[];
+sources?: SourceItem[];
+
 
   timeline: TimelineEvent[];
 
@@ -171,7 +202,8 @@ export const createDraft = async (data: Partial<Draft>) => {
       buildAllCategories(data.category, data.secondaryCategories || []),
     tags: data.tags || [],
     imageUrl: data.imageUrl || "",
-    sources: data.sources || [],
+   sources: (data.sources as SourceItem[]) || [],
+
 
     timeline: [],
 
@@ -313,15 +345,34 @@ export const addTimelineEvent = async (
     };
   } else {
     newBlock = {
-      date: eventData.date || "",
-      event: eventData.event || "",
-      description: eventData.description || "",
-      significance: eventData.significance || 1,
-      imageUrl: eventData.imageUrl || "",
-      sourceLink: eventData.sourceLink || "",
-      sources: eventData.sources || [],
-      contexts: eventData.contexts || [],
-      faqs: eventData.faqs || [],
+          date: eventData.date || "",
+    event: eventData.event || "",
+    description: eventData.description || "",
+    significance: eventData.significance || 1,
+
+    // legacy support
+    imageUrl: eventData.imageUrl || "",
+    sourceLink: eventData.sourceLink || "",
+    sources: eventData.sources || [],
+
+    contexts: eventData.contexts || [],
+    faqs: eventData.faqs || [],
+
+    // ---------------------------
+    // 🔹 Default WW presentation
+    // ---------------------------
+    origin: eventData.origin || "external",
+
+    displayMode: eventData.displayMode || "link-preview",
+
+    media:
+      eventData.media ||
+      (eventData.sources && eventData.sources.length > 0
+        ? { type: "link-preview", sourceIndex: 0 }
+        : undefined),
+
+    isHighlighted: false,
+      
     };
   }
 
