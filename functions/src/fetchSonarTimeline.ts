@@ -6,11 +6,9 @@
 
 import { onCall } from "firebase-functions/v2/https";
 import axios from "axios";
-import * as dotenv from "dotenv";
 import * as admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 
-dotenv.config();
 
 if (!admin.apps.length) {
   admin.initializeApp();

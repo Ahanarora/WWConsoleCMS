@@ -11,7 +11,7 @@ export interface SourceItem {
   link: string;
   imageUrl: string | null;
   sourceName: string;
-  pubDate?: string;
+  pubDate?: string | null;
 }
 
 export interface FetchEventCoverageResponse {

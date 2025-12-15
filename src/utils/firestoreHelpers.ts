@@ -25,7 +25,7 @@ export interface SourceItem {
   link: string;
   imageUrl: string | null;
   sourceName: string;
-  pubDate?: string;
+  pubDate?: string | null;
   score?: number;
   provider?: "sonar" | "serper";
 
