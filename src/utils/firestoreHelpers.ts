@@ -26,10 +26,7 @@ import {
  * 🔹 SHARED DOMAIN TYPES
  * These now come from @ww/shared
  */
-import type {
-  TimelineBlock,
-  SourceItem,
-} from "@ww/shared";
+import type { TimelineBlock, SourceItem, TimelineEventBlock } from "@ww/shared";
 
 // ---------------------------
 // 🔹 LEGACY CMS EVENT SHAPE
@@ -152,11 +149,22 @@ export interface Draft {
 // ---------------------------
 
 const sanitizeTimeline = (timeline: any[] = []): any[] =>
-  (timeline || []).map((ev: any) => {
-    const { imageUrl, media, displayMode, ...rest } = ev || {};
+  (timeline || []).map((block: any) => {
+    // Preserve non-event blocks as-is (except optional source sanitize if present)
+    if (block?.type && block.type !== "event") {
+      const { sources, ...rest } = block || {};
+      return {
+        ...rest,
+        ...(sources ? { sources: sanitizeSources(sources || []) } : {}),
+      };
+    }
+
+    // Event-like block or legacy event: strip presentation-only fields and sanitize sources
+    const { imageUrl, media, displayMode, sources, ...rest } = block || {};
     return {
       ...rest,
-      sources: sanitizeSources(ev?.sources || []),
+      type: "event",
+      sources: sanitizeSources(sources || []),
     };
   });
 
@@ -348,6 +356,38 @@ export const deleteDraft = async (id: string) => {
 // 🔹 Timeline Mutations (BOUNDARY FROZEN)
 // ---------------------------
 
+/**
+ * ✅ New: write a fully-formed shared TimelineBlock at an index.
+ * This is what EditDraft should call when saving an event block.
+ */
+export const updateTimelineBlock = async (
+  id: string,
+  index: number,
+  block: TimelineBlock
+) => {
+  const draft = await fetchDraft(id);
+  if (!draft) throw new Error("Draft not found");
+
+  const updatedTimeline = [...draft.timeline];
+  updatedTimeline[index] = block;
+
+  await updateDraft(id, { timeline: updatedTimeline });
+};
+
+/**
+ * ✅ New: append a fully-formed shared TimelineBlock.
+ */
+export const addTimelineBlock = async (id: string, block: TimelineBlock) => {
+  const draft = await fetchDraft(id);
+  if (!draft) throw new Error("Draft not found");
+
+  const updatedTimeline = [...draft.timeline, block];
+  await updateDraft(id, { timeline: updatedTimeline });
+};
+
+/**
+ * Legacy: append event using legacy CMS input.
+ */
 export const addTimelineEvent = async (
   id: string,
   eventData: Partial<TimelineEvent>
@@ -361,6 +401,9 @@ export const addTimelineEvent = async (
   await updateDraft(id, { timeline: updatedTimeline });
 };
 
+/**
+ * Legacy: patch/update an existing event block using legacy CMS input.
+ */
 export const updateTimelineEvent = async (
   id: string,
   index: number,
@@ -374,7 +417,10 @@ export const updateTimelineEvent = async (
 
   if (!existing || existing.type !== "event") return;
 
-  updatedTimeline[index] = updateEventBlockFromLegacy(existing, eventData);
+  updatedTimeline[index] = updateEventBlockFromLegacy(
+    existing as TimelineEventBlock,
+    eventData
+  );
 
   await updateDraft(id, { timeline: updatedTimeline });
 };
