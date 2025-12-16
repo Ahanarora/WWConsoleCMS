@@ -45,15 +45,16 @@ export async function fetchSonarTimelineForDraft(
     significance: ev.importance ?? 2,
 
     sourceLink: ev.sources?.[0]?.url ?? "",
+sources:
+  ev.sources?.map((s) => ({
+    title: s.title ?? "",
+    link: s.url ?? "",
+    sourceName: s.sourceName ?? "",
+    imageUrl: null, // ✅ required by SourceItem (Sonar doesn’t provide it)
+    pubDate: s.publishedAt ?? null, // ✅ string | null (not "")
+    provider: "sonar" as const,
+  })) ?? [],
 
-    sources:
-      ev.sources?.map((s) => ({
-        title: s.title ?? "",
-        link: s.url ?? "",
-        sourceName: s.sourceName ?? "",
-        pubDate: s.publishedAt ?? "",
-        provider: "sonar", // ⭐ TAG SOURCE ORIGIN
-      })) ?? [],
 
     contexts: [],
     faqs: [],

@@ -863,22 +863,25 @@ const handleFetchCoverage = async (i: number, block: TimelineBlock) => {
     }
 
     const existingSources: SourceItem[] = (ev.sources || []).map((s: any) => ({
-      title: s.title || "",
-      link: s.link || "",
-      sourceName: s.sourceName || "",
-      pubDate: s.pubDate ?? null,
-      score: s.score,
-      provider: s.provider,
-    }));
+  title: s.title || "",
+  link: s.link || "",
+  sourceName: s.sourceName || "",
+  imageUrl: s.imageUrl ?? null,   // ✅ add
+  pubDate: s.pubDate ?? null,
+  score: s.score ?? null,
+  provider: s.provider ?? "manual", // keep safe default
+}));
 
-    const serperSources: SourceItem[] = (result.sources || []).map((s: any) => ({
-      title: s.title || "",
-      link: s.link || "",
-      sourceName: s.sourceName || "",
-      pubDate: s.pubDate ?? null,
-      score: s.score,
-      provider: s.provider || "serper",
-    }));
+const serperSources: SourceItem[] = (result.sources || []).map((s: any) => ({
+  title: s.title || "",
+  link: s.link || "",
+  sourceName: s.sourceName || "",
+  imageUrl: s.imageUrl ?? null,   // ✅ add
+  pubDate: s.pubDate ?? null,
+  score: s.score ?? null,
+  provider: (s.provider ?? "serper"), // ✅ default
+}));
+
 
     const mergedSources = [
       ...existingSources,
