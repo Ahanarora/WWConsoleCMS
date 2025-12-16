@@ -12,6 +12,7 @@ import {
 } from "../utils/firestoreHelpers";
 import type { Draft, TimelineEvent, SourceItem } from "../utils/firestoreHelpers";
 
+
 import {
   generateAnalysis,
   generateExplainersForEvent,
@@ -76,11 +77,6 @@ const parseTags = (value: string): string[] =>
     .map((tag) => tag.trim())
     .filter(Boolean);
 
-const DISPLAY_MODES = [
-  { value: "link-preview", label: "Publisher link preview" },
-  { value: "ai-image", label: "AI / uploaded image" },
-];
-
 
     
 const normalizeText = (value?: string) => value || "";
@@ -114,11 +110,6 @@ export default function EditDraft() {
   const [isFactCheckModalOpen, setIsFactCheckModalOpen] = useState(false);
   const [factCheckJson, setFactCheckJson] = useState("");
   const [tagsInput, setTagsInput] = useState("");
-
-
-  const [imageOptions, setImageOptions] = useState<string[]>([]);
-  const [showImagePicker, setShowImagePicker] = useState(false);
-  const [selectedEventIndex, setSelectedEventIndex] = useState<number | null>(null);
 
   const [showTimeline, setShowTimeline] = useState(true);
   const [showAnalysis, setShowAnalysis] = useState(true);
@@ -155,6 +146,20 @@ export default function EditDraft() {
   const secondarySubcategoryOptions = uniq(
     CATEGORY_OPTIONS.flatMap((c) => c.subcategories || [])
   );
+
+  const stripSourceMedia = (sources: SourceItem[] = []): SourceItem[] =>
+    (sources || []).map((src: any) => {
+      const { imageUrl, preview, ...rest } = src || {};
+      return rest;
+    });
+
+  const stripTimelineMedia = (
+    timeline: TimelineEvent[] = []
+  ): TimelineEvent[] =>
+    (timeline || []).map((ev: any) => {
+      const { imageUrl, media, displayMode, sources, ...rest } = ev || {};
+      return { ...rest, sources: stripSourceMedia(sources || []) };
+    });
 
   const handlePrimaryCategoryChange = (value: string) => {
     if (!draft) return;
@@ -200,7 +205,8 @@ export default function EditDraft() {
   const ensureDraftShape = (data: Draft): Draft => ({
     ...data,
     // Guard against missing arrays/flags and keep categories normalized
-    timeline: data.timeline || [],
+    timeline: stripTimelineMedia(data.timeline || []),
+    sources: stripSourceMedia(data.sources || []),
     phases: data.phases || [],
     isPinned: data.isPinned ?? data.isPinnedFeatured ?? false,
     category: normalizeCategoryValue(data.category),
@@ -611,14 +617,11 @@ const handleGenerateTimeline = async () => {
       event: "",
       description: "",
       significance: 1,
-      imageUrl: "",
       sourceLink: "",
       sources: [],
       contexts: [],
       faqs: [],
-      displayMode: "link-preview",
-media: { type: "link-preview", sourceIndex: 0 },
-origin: "external",
+      origin: "external",
     };
 
     const updatedTimeline = [...(draft.timeline || []), newItem];
@@ -692,49 +695,42 @@ origin: "external",
       const result = await fetchEventCoverage(eventTitle, description, ev.date || "");
 
       if (result.sources?.length) {
-        const normalizedSources = result.sources.map((s) => ({
-          ...s,
-          imageUrl: s.imageUrl ?? null,
+        const existingSources: SourceItem[] = (draft.timeline[i].sources || []).map(
+          ({ title, link, sourceName, pubDate, score, provider }) => ({
+            title: title || "",
+            link: link || "",
+            sourceName: sourceName || "",
+            pubDate: pubDate || null,
+            score,
+            provider,
+          })
+        );
+
+        const serperSources: SourceItem[] = (result.sources || []).map((s) => ({
+          title: s.title,
+          link: s.link,
+          sourceName: s.sourceName,
+          pubDate: s.pubDate,
+          score: s.score,
+          provider: s.provider || "serper",
         }));
 
-        const existingSources: SourceItem[] = draft.timeline[i].sources || [];
+        const mergedSources = [
+          ...existingSources,
+          ...serperSources.filter(
+            (s) => !existingSources.some((e) => e.link === s.link)
+          ),
+        ];
 
-
-const serperSources: SourceItem[] = normalizedSources.map((s) => ({
-  title: s.title,
-  link: s.link,
-  sourceName: s.sourceName,
-  imageUrl: s.imageUrl ?? null,
-  pubDate: s.pubDate,
-  provider: "serper",
-}));
-
-
-const mergedSources = [
-  ...existingSources,
-  ...serperSources.filter(
-    (s) => !existingSources.some((e) => e.link === s.link)
-  ),
-];
-
-const updatedEvent = {
-  ...draft.timeline[i],
-  sources: mergedSources,
-  imageUrl:
-    mergedSources.find((s) => s.imageUrl)?.imageUrl ||
-    draft.timeline[i].imageUrl,
-    displayMode: draft.timeline[i].displayMode || "link-preview",
-media: draft.timeline[i].media || { type: "link-preview", sourceIndex: 0 },
-origin: draft.timeline[i].origin || "external",
-
-};
-
+        const updatedEvent = {
+          ...draft.timeline[i],
+          sources: mergedSources,
+          origin: draft.timeline[i].origin || "external",
+        };
 
         await updateTimelineEvent(id, i, updatedEvent);
         const updatedTimeline = [...draft.timeline];
         updatedTimeline[i] = updatedEvent;
-
-        
 
         // Refresh from Firestore so UI and persistence match after auto-fetch
         const refreshed = await fetchDraft(id);
@@ -952,7 +948,10 @@ origin: draft.timeline[i].origin || "external",
             onChange={handleMetadataChange}
             placeholder="Main Thumbnail / Cover Image URL"
             className="border p-2 rounded md:col-span-2"
+            
           />
+
+
 
           <button
   type="button"
@@ -961,7 +960,6 @@ origin: draft.timeline[i].origin || "external",
 >
   ☁️ Upload Image from Midjourney Link
 </button>
-np
 
           {/* Live thumbnail preview */}
           {draft.imageUrl && (
@@ -1445,14 +1443,6 @@ np
                   placeholder="Event"
                   className="border p-2 rounded"
                 />
-                <input
-                  value={ev.imageUrl || ""}
-                  onChange={(e) =>
-                    handleUpdateEvent(i, "imageUrl", e.target.value)
-                  }
-                  placeholder="Image URL"
-                  className="border p-2 rounded"
-                />
                 {/* 🔗 Multiple Source Links */}
 <div className="space-y-2">
   <label className="text-sm font-medium text-gray-700">Sources</label>
@@ -1532,45 +1522,6 @@ np
 <div className="text-sm text-gray-700 mt-2">
 {renderLinkedText(ev.description ?? "")}
 </div>
-{/* 📰 Main Preview Link (Publisher Card) */}
-{Array.isArray(ev.sources) && ev.sources.length > 0 && (
-  <div className="mt-4 border-t pt-3 space-y-1">
-    <label className="text-sm font-semibold text-gray-700">
-      Main preview link (shown as card)
-    </label>
-
-    <select
-      value={ev.media?.sourceIndex ?? 0}
-      onChange={async (e) => {
-        const idx = Number(e.target.value);
-
-        await updateTimelineEvent(id!, i, {
-          displayMode: "link-preview",
-          media: {
-            type: "link-preview",
-            sourceIndex: idx,
-          },
-        });
-
-        const refreshed = await fetchDraft(id!);
-        if (refreshed) setDraft(ensureDraftShape(refreshed));
-        setUnsaved(true);
-      }}
-      className="border p-2 rounded w-full"
-    >
-      {ev.sources.map((s, idx) => (
-        <option key={s.link} value={idx}>
-          {idx === (ev.media?.sourceIndex ?? 0) ? "⭐ " : ""}
-          {s.sourceName} — {s.title?.slice(0, 80)}
-        </option>
-      ))}
-    </select>
-
-    <p className="text-xs text-gray-500">
-      This source’s headline and image will be used as the event’s preview card.
-    </p>
-  </div>
-)}
 
 
               {ev.factCheck && typeof ev.factCheck.confidenceScore === "number" && (

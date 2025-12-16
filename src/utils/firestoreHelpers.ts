@@ -23,31 +23,11 @@ import {
 export interface SourceItem {
   title: string;
   link: string;
-  imageUrl: string | null;
   sourceName: string;
   pubDate?: string | null;
   score?: number;
-  provider?: "sonar" | "serper";
-
+  provider?: string;
 }
-
-// ---------------------------
-// 🔹 Event Media & Display
-// ---------------------------
-
-export type EventDisplayMode = "link-preview" | "ai-image";
-
-export interface EventMedia {
-  type: EventDisplayMode;
-
-  // For link preview
-  sourceIndex?: number; // index in sources[]
-
-  // For AI / uploaded image
-  imageUrl?: string;
-  attribution?: string; // "AI-generated" | "Editor uploaded"
-}
-
 
 /**
  * ⭐ TimelineEvent now supports normal events + phases
@@ -61,7 +41,6 @@ export interface TimelineEvent {
   event?: string;
   description?: string;
   significance?: number;
-  imageUrl?: string;
   sourceLink?: string;
   sources?: SourceItem[];
   contexts?: { term: string; explainer: string }[];
@@ -76,10 +55,6 @@ export interface TimelineEvent {
   // ---------------------------
 
   origin?: "external" | "ww";
-
-  displayMode?: EventDisplayMode;
-
-  media?: EventMedia;
 
   isHighlighted?: boolean;
 
@@ -122,8 +97,7 @@ export interface Draft {
   allCategories?: string[];
   tags: string[];
   imageUrl?: string;
-sources?: SourceItem[];
-
+  sources?: SourceItem[];
 
   timeline: TimelineEvent[];
 
@@ -163,6 +137,22 @@ sources?: SourceItem[];
   createdAt?: any;   // ⭐ NEW
 }
 
+const sanitizeSources = (sources: any[] = []): SourceItem[] =>
+  (sources || []).map((src: any) => {
+    const { imageUrl, preview, ...rest } = src || {};
+    return rest;
+  });
+
+const sanitizeTimeline = (timeline: any[] = []): TimelineEvent[] =>
+  (timeline || []).map((ev: any) => {
+    const { imageUrl, media, displayMode, ...rest } = ev || {};
+    return {
+      ...rest,
+      sources: sanitizeSources(ev?.sources || []),
+    };
+  });
+
+
 // ---------------------------
 // 🔹 Firestore CRUD Functions
 // ---------------------------
@@ -186,6 +176,8 @@ const normalizeDraft = (data: Draft): Draft => ({
   allCategories:
     data.allCategories ||
     buildAllCategories(data.category, data.secondaryCategories || []),
+  sources: sanitizeSources(data.sources || []),
+  timeline: sanitizeTimeline(data.timeline || []),
 });
 
 export const createDraft = async (data: Partial<Draft>) => {
@@ -202,7 +194,7 @@ export const createDraft = async (data: Partial<Draft>) => {
       buildAllCategories(data.category, data.secondaryCategories || []),
     tags: data.tags || [],
     imageUrl: data.imageUrl || "",
-   sources: (data.sources as SourceItem[]) || [],
+   sources: sanitizeSources((data.sources as SourceItem[]) || []),
 
 
     timeline: [],
@@ -261,12 +253,30 @@ export const fetchDrafts = async (): Promise<Draft[]> => {
 export const fetchDraft = async (id: string): Promise<Draft | null> => {
   const docRef = doc(db, "drafts", id);
   const snapshot = await getDoc(docRef);
-  return snapshot.exists()
-    ? (normalizeDraft({
-        id: snapshot.id,
-        ...(snapshot.data() as Draft),
-      }) as Draft)
-    : null;
+  if (!snapshot.exists()) return null;
+
+  const raw = snapshot.data() as Draft;
+  const cleanedTimeline = sanitizeTimeline(raw.timeline || []);
+  const cleanedSources = sanitizeSources(raw.sources || []);
+
+  const needsCleanup =
+    JSON.stringify(raw.timeline || []) !== JSON.stringify(cleanedTimeline) ||
+    JSON.stringify(raw.sources || []) !== JSON.stringify(cleanedSources);
+
+  if (needsCleanup) {
+    await updateDoc(docRef, {
+      timeline: cleanedTimeline,
+      sources: cleanedSources,
+      updatedAt: serverTimestamp(),
+    });
+  }
+
+  return normalizeDraft({
+    id: snapshot.id,
+    ...raw,
+    timeline: cleanedTimeline,
+    sources: cleanedSources,
+  }) as Draft;
 };
 
 /** Generic partial update with merge support */
@@ -280,6 +290,8 @@ export const updateDraft = async (id: string, patch: Partial<Draft>) => {
     ref,
     {
       ...patch,
+      ...(patch.sources ? { sources: sanitizeSources(patch.sources as any[]) } : {}),
+      ...(patch.timeline ? { timeline: sanitizeTimeline(patch.timeline) } : {}),
       ...(patch.category || patch.secondaryCategories
         ? { allCategories: mergedAllCategories }
         : {}),
@@ -345,34 +357,23 @@ export const addTimelineEvent = async (
     };
   } else {
     newBlock = {
-          date: eventData.date || "",
-    event: eventData.event || "",
-    description: eventData.description || "",
-    significance: eventData.significance || 1,
+      date: eventData.date || "",
+      event: eventData.event || "",
+      description: eventData.description || "",
+      significance: eventData.significance || 1,
 
-    // legacy support
-    imageUrl: eventData.imageUrl || "",
-    sourceLink: eventData.sourceLink || "",
-    sources: eventData.sources || [],
+      sourceLink: eventData.sourceLink || "",
+      sources: sanitizeSources(eventData.sources || []),
 
-    contexts: eventData.contexts || [],
-    faqs: eventData.faqs || [],
+      contexts: eventData.contexts || [],
+      faqs: eventData.faqs || [],
 
-    // ---------------------------
-    // 🔹 Default WW presentation
-    // ---------------------------
-    origin: eventData.origin || "external",
+      // ---------------------------
+      // 🔹 Default WW presentation
+      // ---------------------------
+      origin: eventData.origin || "external",
 
-    displayMode: eventData.displayMode || "link-preview",
-
-    media:
-      eventData.media ||
-      (eventData.sources && eventData.sources.length > 0
-        ? { type: "link-preview", sourceIndex: 0 }
-        : undefined),
-
-    isHighlighted: false,
-      
+      isHighlighted: false,
     };
   }
 
@@ -425,8 +426,10 @@ export const publishDraft = async (id: string) => {
     draft.slug ||
     draft.title.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, "");
 
+  const sanitizedTimeline = sanitizeTimeline(draft.timeline || []);
+
   const allSources =
-    draft.timeline
+    sanitizedTimeline
       ?.flatMap((ev) => ev.sources || [])
       .filter((s) => s?.link && s.link.startsWith("http")) || [];
 
@@ -438,6 +441,7 @@ export const publishDraft = async (id: string) => {
 
   await setDoc(publishRef, {
     ...draft,
+    timeline: sanitizedTimeline,
     allCategories,
     sources: allSources,
     publishedAt: serverTimestamp(),
@@ -446,6 +450,7 @@ export const publishDraft = async (id: string) => {
   });
 
   await updateDoc(draftRef, {
+    timeline: sanitizedTimeline,
     status: "published",
     updatedAt: serverTimestamp(),
   });

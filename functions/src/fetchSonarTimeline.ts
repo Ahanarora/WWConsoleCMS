@@ -23,7 +23,6 @@ interface SonarSourceItem {
   url: string;
   sourceName?: string;
   publishedAt?: string | null;
-  imageUrl?: string | null;
 }
 
 interface SonarTimelineEvent {
@@ -192,7 +191,6 @@ IMPORTANT OVERRIDE:
       url: s.url || "",
       sourceName: s.sourceName || "",
       publishedAt: s.publishedAt || null,
-      imageUrl: s.imageUrl || null,
     })),
   }));
 

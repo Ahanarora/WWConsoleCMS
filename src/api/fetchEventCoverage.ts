@@ -9,9 +9,10 @@ import { doc, getDoc } from "firebase/firestore";
 export interface SourceItem {
   title: string;
   link: string;
-  imageUrl: string | null;
   sourceName: string;
   pubDate?: string | null;
+  score?: number;
+  provider?: string;
 }
 
 export interface FetchEventCoverageResponse {

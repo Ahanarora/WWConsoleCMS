@@ -17,7 +17,6 @@ interface FetchSonarTimelineResponse {
       url: string;
       sourceName?: string;
       publishedAt?: string | null;
-      imageUrl?: string | null;
     }>;
   }>;
 }
@@ -45,7 +44,6 @@ export async function fetchSonarTimelineForDraft(
     description: ev.description ?? "",
     significance: ev.importance ?? 2,
 
-    imageUrl: ev.sources?.[0]?.imageUrl ?? "",
     sourceLink: ev.sources?.[0]?.url ?? "",
 
     sources:
@@ -53,7 +51,6 @@ export async function fetchSonarTimelineForDraft(
         title: s.title ?? "",
         link: s.url ?? "",
         sourceName: s.sourceName ?? "",
-        imageUrl: s.imageUrl ?? "",
         pubDate: s.publishedAt ?? "",
         provider: "sonar", // ⭐ TAG SOURCE ORIGIN
       })) ?? [],

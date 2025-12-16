@@ -15,10 +15,10 @@ interface FetchEventCoverageRequest {
 interface SourceItem {
   title: string;
   link: string;
-  imageUrl: string | null;
   sourceName: string;
   pubDate?: string;
   score?: number;
+  provider?: string;
 }
 
 interface FetchEventCoverageResponse {

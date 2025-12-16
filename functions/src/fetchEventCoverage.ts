@@ -142,7 +142,6 @@ export const fetchEventCoverage = onCall(async (request) => {
             {
               title: n.title || "",
               link: n.link,
-              imageUrl: n.imageUrl || n.thumbnail || null,
               sourceName: n.source || n.domain || "Unknown",
               pubDate: n.date || null,
               provider: "serper",

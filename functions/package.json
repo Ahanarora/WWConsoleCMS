@@ -20,6 +20,7 @@
     "firebase-functions": "^6.6.0",
     "node-cache": "^5.1.2",
     "openai": "^6.6.0",
+    "probe-image-size": "^7.2.3",
     "rss-parser": "^3.13.0"
   },
   "devDependencies": {
