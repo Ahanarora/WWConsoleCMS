@@ -15,24 +15,29 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 
-// ---------------------------
-// 🔹 Type Definitions
-// ---------------------------
-
-// Each timeline event in a draft
-export interface SourceItem {
-  title: string;
-  link: string;
-  sourceName: string;
-  pubDate?: string | null;
-  score?: number;
-  provider?: string;
-}
+import {
+  mapLegacyEventToEventBlock,
+  updateEventBlockFromLegacy,
+  normalizeTimeline,
+  sanitizeSources,
+} from "./timelineMappers";
 
 /**
- * ⭐ TimelineEvent now supports normal events + phases
+ * 🔹 SHARED DOMAIN TYPES
+ * These now come from @ww/shared
  */
+import type {
+  TimelineBlock,
+  SourceItem,
+} from "@ww/shared";
+
+// ---------------------------
+// 🔹 LEGACY CMS EVENT SHAPE
+// (kept temporarily so CMS logic does not break)
+// ---------------------------
+
 export interface TimelineEvent {
+  type?: "event";
   id?: string;
   phase?: boolean;
   title?: string;
@@ -43,6 +48,7 @@ export interface TimelineEvent {
   significance?: number;
   sourceLink?: string;
   sources?: SourceItem[];
+
   contexts?: { term: string; explainer: string }[];
   faqs?: { question: string; answer: string }[];
   factCheck?: {
@@ -50,18 +56,17 @@ export interface TimelineEvent {
     explanation: string;
     lastCheckedAt: number;
   };
-    // ---------------------------
+
+  // ---------------------------
   // 🔹 WW Presentation Controls
   // ---------------------------
 
   origin?: "external" | "ww";
-
   isHighlighted?: boolean;
-
 }
 
 // ---------------------------
-// 🔹 Analysis Types
+// 🔹 Analysis Types (unchanged)
 // ---------------------------
 
 export interface Stakeholder {
@@ -96,12 +101,17 @@ export interface Draft {
   secondarySubcategories?: string[];
   allCategories?: string[];
   tags: string[];
+
   imageUrl?: string;
   sources?: SourceItem[];
 
-  timeline: TimelineEvent[];
+  /**
+   * ⭐ IMPORTANT CHANGE
+   * Timeline is now a mixed-content stream
+   */
+  timeline: TimelineBlock[];
 
-  // Universal card description (used for card previews)
+  // Universal card description
   cardDescription?: string;
 
   // Card descriptions per surface
@@ -134,16 +144,14 @@ export interface Draft {
   editorNotes?: string;
 
   updatedAt?: any;
-  createdAt?: any;   // ⭐ NEW
+  createdAt?: any;
 }
 
-const sanitizeSources = (sources: any[] = []): SourceItem[] =>
-  (sources || []).map((src: any) => {
-    const { imageUrl, preview, ...rest } = src || {};
-    return rest;
-  });
+// ---------------------------
+// 🔹 Legacy Sanitizer (visual junk only)
+// ---------------------------
 
-const sanitizeTimeline = (timeline: any[] = []): TimelineEvent[] =>
+const sanitizeTimeline = (timeline: any[] = []): any[] =>
   (timeline || []).map((ev: any) => {
     const { imageUrl, media, displayMode, ...rest } = ev || {};
     return {
@@ -152,9 +160,8 @@ const sanitizeTimeline = (timeline: any[] = []): TimelineEvent[] =>
     };
   });
 
-
 // ---------------------------
-// 🔹 Firestore CRUD Functions
+// 🔹 Helpers
 // ---------------------------
 
 const buildAllCategories = (
@@ -167,7 +174,9 @@ const buildAllCategories = (
   return Array.from(new Set(merged.map((c) => c.trim())));
 };
 
-/** Create a new draft with default fields */
+/**
+ * Normalize draft object
+ */
 const normalizeDraft = (data: Draft): Draft => ({
   ...data,
   isPinned: data.isPinned ?? data.isPinnedFeatured ?? false,
@@ -177,8 +186,12 @@ const normalizeDraft = (data: Draft): Draft => ({
     data.allCategories ||
     buildAllCategories(data.category, data.secondaryCategories || []),
   sources: sanitizeSources(data.sources || []),
-  timeline: sanitizeTimeline(data.timeline || []),
+  timeline: normalizeTimeline(sanitizeTimeline(data.timeline || [])),
 });
+
+// ---------------------------
+// 🔹 Firestore CRUD
+// ---------------------------
 
 export const createDraft = async (data: Partial<Draft>) => {
   const defaultDraft: Draft = {
@@ -194,15 +207,11 @@ export const createDraft = async (data: Partial<Draft>) => {
       buildAllCategories(data.category, data.secondaryCategories || []),
     tags: data.tags || [],
     imageUrl: data.imageUrl || "",
-   sources: sanitizeSources((data.sources as SourceItem[]) || []),
-
+    sources: sanitizeSources((data.sources as SourceItem[]) || []),
 
     timeline: [],
 
-    // Card previews
     cardDescription: data.cardDescription || "",
-
-    // Card descriptions (separate from overview)
     cardDescriptionHome: data.cardDescriptionHome || "",
     cardDescriptionTheme: data.cardDescriptionTheme || "",
     cardDescriptionStory: data.cardDescriptionStory || "",
@@ -229,8 +238,7 @@ export const createDraft = async (data: Partial<Draft>) => {
 
     editorNotes: data.editorNotes || "",
 
-    // ⭐ timestamps
-    createdAt: serverTimestamp(),   // NEW
+    createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
 
@@ -238,7 +246,6 @@ export const createDraft = async (data: Partial<Draft>) => {
   return docRef.id;
 };
 
-/** Fetch all drafts */
 export const fetchDrafts = async (): Promise<Draft[]> => {
   const snapshot = await getDocs(collection(db, "drafts"));
   return snapshot.docs.map((d) =>
@@ -249,14 +256,15 @@ export const fetchDrafts = async (): Promise<Draft[]> => {
   );
 };
 
-/** Fetch one draft by ID */
 export const fetchDraft = async (id: string): Promise<Draft | null> => {
   const docRef = doc(db, "drafts", id);
   const snapshot = await getDoc(docRef);
   if (!snapshot.exists()) return null;
 
   const raw = snapshot.data() as Draft;
-  const cleanedTimeline = sanitizeTimeline(raw.timeline || []);
+  const cleanedTimeline = normalizeTimeline(
+    sanitizeTimeline(raw.timeline || [])
+  );
   const cleanedSources = sanitizeSources(raw.sources || []);
 
   const needsCleanup =
@@ -276,32 +284,39 @@ export const fetchDraft = async (id: string): Promise<Draft | null> => {
     ...raw,
     timeline: cleanedTimeline,
     sources: cleanedSources,
-  }) as Draft;
+  });
 };
 
-/** Generic partial update with merge support */
 export const updateDraft = async (id: string, patch: Partial<Draft>) => {
   const ref = doc(db, "drafts", id);
   const mergedAllCategories = buildAllCategories(
     patch.category,
     patch.secondaryCategories || []
   );
+
   await setDoc(
     ref,
     {
       ...patch,
-      ...(patch.sources ? { sources: sanitizeSources(patch.sources as any[]) } : {}),
-      ...(patch.timeline ? { timeline: sanitizeTimeline(patch.timeline) } : {}),
+      ...(patch.sources
+        ? { sources: sanitizeSources(patch.sources as any[]) }
+        : {}),
+      ...(patch.timeline
+        ? {
+            timeline: normalizeTimeline(
+              sanitizeTimeline(patch.timeline as any[])
+            ),
+          }
+        : {}),
       ...(patch.category || patch.secondaryCategories
         ? { allCategories: mergedAllCategories }
         : {}),
-      updatedAt: serverTimestamp(), // ⭐ do NOT overwrite createdAt
+      updatedAt: serverTimestamp(),
     },
     { merge: true }
   );
 };
 
-/** Delete draft and any published doc (stories/themes) that matches its slug */
 export const deleteDraft = async (id: string) => {
   const draftRef = doc(db, "drafts", id);
   const snap = await getDoc(draftRef);
@@ -317,17 +332,12 @@ export const deleteDraft = async (id: string) => {
 
     try {
       await deleteDoc(doc(db, collectionName, slug));
-    } catch (err) {
-      console.warn("⚠️ Failed to delete published doc (ignoring):", err);
-    }
+    } catch {}
 
-    // Also attempt delete by draft ID in case the published doc used the ID as key
     if (slug !== id) {
       try {
         await deleteDoc(doc(db, collectionName, id));
-      } catch (err) {
-        console.warn("⚠️ Failed to delete published doc by ID (ignoring):", err);
-      }
+      } catch {}
     }
   }
 
@@ -335,12 +345,9 @@ export const deleteDraft = async (id: string) => {
 };
 
 // ---------------------------
-// 🔹 Timeline Helpers
+// 🔹 Timeline Mutations (BOUNDARY FROZEN)
 // ---------------------------
 
-/**
- * Add a new event or phase block
- */
 export const addTimelineEvent = async (
   id: string,
   eventData: Partial<TimelineEvent>
@@ -348,40 +355,12 @@ export const addTimelineEvent = async (
   const draft = await fetchDraft(id);
   if (!draft) throw new Error("Draft not found");
 
-  let newBlock: TimelineEvent;
+  const newBlock = mapLegacyEventToEventBlock(eventData);
 
-  if (eventData.phase) {
-    newBlock = {
-      phase: true,
-      title: eventData.title || "New Phase",
-    };
-  } else {
-    newBlock = {
-      date: eventData.date || "",
-      event: eventData.event || "",
-      description: eventData.description || "",
-      significance: eventData.significance || 1,
-
-      sourceLink: eventData.sourceLink || "",
-      sources: sanitizeSources(eventData.sources || []),
-
-      contexts: eventData.contexts || [],
-      faqs: eventData.faqs || [],
-
-      // ---------------------------
-      // 🔹 Default WW presentation
-      // ---------------------------
-      origin: eventData.origin || "external",
-
-      isHighlighted: false,
-    };
-  }
-
-  const updatedTimeline = [...(draft.timeline || []), newBlock];
+  const updatedTimeline = [...draft.timeline, newBlock];
   await updateDraft(id, { timeline: updatedTimeline });
 };
 
-/** Update timeline block */
 export const updateTimelineEvent = async (
   id: string,
   index: number,
@@ -390,16 +369,16 @@ export const updateTimelineEvent = async (
   const draft = await fetchDraft(id);
   if (!draft) throw new Error("Draft not found");
 
-  const updatedTimeline = [...(draft.timeline || [])];
-  updatedTimeline[index] = {
-    ...updatedTimeline[index],
-    ...eventData,
-  };
+  const updatedTimeline = [...draft.timeline];
+  const existing = updatedTimeline[index];
+
+  if (!existing || existing.type !== "event") return;
+
+  updatedTimeline[index] = updateEventBlockFromLegacy(existing, eventData);
 
   await updateDraft(id, { timeline: updatedTimeline });
 };
 
-/** Delete timeline block */
 export const deleteTimelineEvent = async (id: string, index: number) => {
   const draft = await fetchDraft(id);
   if (!draft) throw new Error("Draft not found");
@@ -409,13 +388,9 @@ export const deleteTimelineEvent = async (id: string, index: number) => {
 };
 
 // ---------------------------
-// 🔹 Publishing
+// 🔹 Publishing (unchanged behavior)
 // ---------------------------
 
-/**
- * Publish a draft → /stories or /themes
- * ⭐ preserves createdAt
- */
 export const publishDraft = async (id: string) => {
   const draftRef = doc(db, "drafts", id);
   const snap = await getDoc(draftRef);
@@ -426,18 +401,22 @@ export const publishDraft = async (id: string) => {
     draft.slug ||
     draft.title.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, "");
 
-  const sanitizedTimeline = sanitizeTimeline(draft.timeline || []);
+  const sanitizedTimeline = normalizeTimeline(
+    sanitizeTimeline(draft.timeline || [])
+  );
 
   const allSources =
     sanitizedTimeline
-      ?.flatMap((ev) => ev.sources || [])
-      .filter((s) => s?.link && s.link.startsWith("http")) || [];
+      .flatMap((ev: any) => ev.sources || [])
+      .filter((s: any) => s?.link && s.link.startsWith("http")) || [];
 
   const collectionName = draft.type === "Story" ? "stories" : "themes";
   const publishRef = doc(db, collectionName, slug);
-  const allCategories = draft.allCategories?.length
-    ? draft.allCategories
-    : buildAllCategories(draft.category, draft.secondaryCategories || []);
+
+  const allCategories =
+    draft.allCategories?.length
+      ? draft.allCategories
+      : buildAllCategories(draft.category, draft.secondaryCategories || []);
 
   await setDoc(publishRef, {
     ...draft,
@@ -445,7 +424,7 @@ export const publishDraft = async (id: string) => {
     allCategories,
     sources: allSources,
     publishedAt: serverTimestamp(),
-    createdAt: draft.createdAt || serverTimestamp(),   // ⭐ preserve original
+    createdAt: draft.createdAt || serverTimestamp(),
     status: "published",
   });
 
@@ -454,10 +433,6 @@ export const publishDraft = async (id: string) => {
     status: "published",
     updatedAt: serverTimestamp(),
   });
-
-  console.log(
-    `✅ Published ${draft.type} → /${collectionName}/${slug} with ${allSources.length} sources`
-  );
 };
 
 export const publishStory = async (id: string) => {
