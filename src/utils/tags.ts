@@ -1,3 +1,5 @@
+//src/utils/tags.ts
+
 export const normalizeTag = (str: string): string =>
   str.trim().toLowerCase().replace(/\s+/g, "-");
 

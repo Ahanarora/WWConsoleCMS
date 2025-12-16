@@ -1,3 +1,5 @@
+//src/utils/cloudinaryUpload.ts
+
 export async function uploadToCloudinary(imageUrl: string) {
   const cloudName = "dpjnkc0dq";            // your cloud name
   const uploadPreset = "waitwhat_unsigned"; // your unsigned preset
