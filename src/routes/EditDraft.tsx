@@ -301,6 +301,8 @@ export default function EditDraft() {
 
   const ensureDraftShape = (data: Draft): Draft => ({
     ...data,
+    analysis: data.analysis || { stakeholders: [], faqs: [], future: [] },
+
     // Guard against missing arrays/flags and keep categories normalized
     timeline: stripTimelineMedia(data.timeline || []),
     sources: stripSourceMedia(data.sources || []),
@@ -548,847 +550,849 @@ Events:
   };
 
   // ----------------------------
-// LOAD DRAFT
-// ----------------------------
-useEffect(() => {
-  const load = async () => {
-    try {
-      if (!id) return;
-      const data = await fetchDraft(id);
-      const shaped = data ? ensureDraftShape(data) : null;
-      setDraft(shaped);
-      setTagsInput((shaped?.tags || []).join(", "));
-    } catch (err) {
-      console.error(err);
-      alert("Failed to load draft.");
-    } finally {
-      setLoading(false);
-    }
-  };
-  load();
-}, [id]);
-
-// Warn user if there are unsaved changes
-useEffect(() => {
-  const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-    if (unsaved) {
-      e.preventDefault();
-      e.returnValue = "";
-    }
-  };
-  window.addEventListener("beforeunload", handleBeforeUnload);
-  return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-}, [unsaved]);
-
-// ----------------------------
-// METADATA HANDLERS
-// ----------------------------
-const handleMetadataChange = (
-  e: React.ChangeEvent<
-    HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-  >
-) => {
-  if (!draft) return;
-  const { name, value } = e.target;
-  setDraft({ ...draft, [name]: value } as Draft);
-  setUnsaved(true);
-};
-
-const handleTagsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-  setTagsInput(e.target.value);
-  setUnsaved(true);
-};
-
-const commitTags = (value: string) => {
-  setDraft((prev) => (prev ? { ...prev, tags: parseTags(value) } : prev));
-};
-
-// ----------------------------
-// CLOUDINARY — UPLOAD FROM MIDJOURNEY LINK
-// ----------------------------
-const handleCloudinaryUpload = async () => {
-  const url = prompt("Paste Midjourney Image URL:");
-  if (!url) return;
-
-  try {
-    const cloudUrl = await uploadToCloudinary(url);
-
-    setDraft((prev) => (prev ? { ...prev, imageUrl: cloudUrl } : prev));
-
-    setUnsaved(true);
-    alert("✅ Uploaded to Cloudinary!");
-  } catch (err) {
-    console.error(err);
-    alert("❌ Failed to upload image.");
-  }
-};
-
-const saveMetadata = async () => {
-  if (!draft || !id) return;
-  try {
-    setSaving(true);
-
-    // Recompute canonical categories and persist tags from freeform input
-    const allCategories = computeAllCategories(
-      draft.category,
-      draft.secondaryCategories || []
-    );
-    const parsedTags = parseTags(tagsInput);
-
-    const payload: Draft = {
-      ...draft,
-      allCategories: (allCategories || []).filter(Boolean),
-      tags: parsedTags,
+  // LOAD DRAFT
+  // ----------------------------
+  useEffect(() => {
+    const load = async () => {
+      try {
+        if (!id) return;
+        const data = await fetchDraft(id);
+        const shaped = data ? ensureDraftShape(data) : null;
+        setDraft(shaped);
+        setTagsInput((shaped?.tags || []).join(", "));
+      } catch (err) {
+        console.error(err);
+        alert("Failed to load draft.");
+      } finally {
+        setLoading(false);
+      }
     };
+    load();
+  }, [id]);
 
-    setDraft(payload);
-    await updateDraft(id, payload);
-
-    setUnsaved(false);
-    alert("✅ Metadata saved");
-  } catch (err: any) {
-    console.error(err);
-    alert("❌ Failed to save metadata: " + (err?.message || "Unknown error"));
-  } finally {
-    setSaving(false);
-  }
-};
-
-// ----------------------------
-// PUBLISH HANDLER
-// ----------------------------
-const handlePublish = async () => {
-  if (!id || !draft) return;
-  setPublishing(true);
-  try {
-    await updateDraft(id, { phases: draft.phases || [] });
-
-    if (draft.type === "Story") {
-      await publishStory(id);
-      alert("✅ Story published successfully!");
-    } else {
-      await publishDraft(id);
-      alert("✅ Theme published successfully!");
-    }
-  } catch (err: any) {
-    console.error(err);
-    alert("❌ Publish failed: " + err.message);
-  } finally {
-    setPublishing(false);
-  }
-};
-
-// ----------------------------
-// GPT HANDLERS
-// ----------------------------
- 
-
-const handleGenerateTimeline = async () => {
-  if (!draft || !id) return;
-
-  setLoadingTimeline(true);
-
-  try {
-    const rawTimeline = await fetchSonarTimelineForDraft(draft);
-
-    // ✅ force to shared blocks
-    const newTimeline: TimelineBlock[] = coerceTimelineBlocks(rawTimeline as any);
-
-    const updatedDraft: Draft = {
-      ...draft,
-      timeline: newTimeline,
-      updatedAt: new Date().toISOString(),
+  // Warn user if there are unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (unsaved) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
     };
-
-    setDraft(updatedDraft);
-
-    await updateDraft(id, {
-      timeline: newTimeline,
-      updatedAt: updatedDraft.updatedAt,
-    });
-
-    setUnsaved(false);
-    alert("✅ Timeline generated with Sonar and saved.");
-  } catch (err: any) {
-    console.error("Failed to generate timeline with Sonar:", err);
-    alert("❌ Failed to generate timeline: " + (err.message || "Unknown error"));
-  } finally {
-    setLoadingTimeline(false);
-  }
-};
-
-const handleGenerateAnalysis = async () => {
-  if (!draft || !id) return;
-
-  setLoadingAnalysis(true);
-  try {
-    // Adjust this call to match your gptHelpers signature.
-    // If your generateAnalysis expects (title, overview, timeline), change accordingly.
-    const analysis = await generateAnalysis(draft as any);
-
-    const updatedAt = new Date().toISOString();
-
-    setDraft({ ...draft, analysis, updatedAt });
-    await updateDraft(id, { analysis, updatedAt } as any);
-
-    setUnsaved(false);
-    alert("✅ Analysis generated and saved.");
-  } catch (err: any) {
-    console.error("❌ Failed to generate analysis:", err);
-    alert("❌ Failed to generate analysis: " + (err?.message || "Unknown error"));
-  } finally {
-    setLoadingAnalysis(false);
-  }
-};
-
-
-// ----------------------------
-// TIMELINE HANDLERS (shared blocks)
-// ----------------------------
-
-const handleAddEvent = async () => {
-  if (!id || !draft) return;
-
-  const newBlock: EventBlock = {
-    id: nanoid(),
-    type: "event",
-    title: "",
-    description: "",
-    date: "",
-    significance: 1 as 1,
-    sources: [],
-    contexts: [],
-    faqs: [],
-    origin: "external",
-  };
-
-  const updatedTimeline: TimelineBlock[] = [...(draft.timeline || []), newBlock];
-
-  setDraft({ ...draft, timeline: updatedTimeline });
-  setUnsaved(true);
-
-  try {
-    // Use frozen boundary helper
-    await addTimelineBlock(id, newBlock);
-    alert("🆕 Blank event added. Scroll to the end of the timeline to edit it.");
-  } catch (err) {
-    console.error("❌ Failed to add event:", err);
-    alert("❌ Failed to add event. Please try again.");
-    const refreshed = await fetchDraft(id);
-    if (refreshed) setDraft(ensureDraftShape(refreshed));
-  }
-};
-
-const handleUpdateEvent = (
-  index: number,
-  patch: Partial<EventBlock>
-) => {
-  if (!draft) return;
-
-  const updatedTimeline = [...(draft.timeline || [])];
-  const block = updatedTimeline[index];
-
-  if (!block || !isEventBlock(block)) return;
-
-  const ev = block as EventBlock;
-  updatedTimeline[index] = { ...ev, ...patch } as any;
-
-  setDraft({ ...draft, timeline: updatedTimeline });
-  setUnsaved(true);
-};
-
-const handleDeleteEvent = async (index: number) => {
-  if (!id || !draft) return;
-  if (!window.confirm("Delete this event?")) return;
-
-  const updatedTimeline = (draft.timeline || []).filter((_, i) => i !== index);
-  const adjustedPhases = shiftPhasesAfterRemoval(
-    draft.phases || [],
-    index,
-    updatedTimeline.length
-  );
-
-  setDraft({ ...draft, timeline: updatedTimeline, phases: adjustedPhases });
-  setUnsaved(true);
-
-  try {
-    // You have a deleteTimelineEvent helper; it deletes by index regardless of type
-    await deleteTimelineEvent(id, index);
-
-    // phases need separate persistence if you want them saved on delete
-    await updateDraft(id, { phases: adjustedPhases });
-
-    const refreshed = await fetchDraft(id);
-    if (refreshed) {
-      setDraft(ensureDraftShape(refreshed));
-      setUnsaved(false);
-    }
-    alert("✅ Event deleted.");
-  } catch (err) {
-    console.error("❌ Failed to delete event:", err);
-    alert("❌ Failed to delete event.");
-    const refreshed = await fetchDraft(id);
-    if (refreshed) setDraft(ensureDraftShape(refreshed));
-  }
-};
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [unsaved]);
 
   // ----------------------------
-// FETCH COVERAGE HANDLER (Serper) — shared TimelineBlocks
-// ----------------------------
-const handleFetchCoverage = async (i: number, block: TimelineBlock) => {
-  if (!id || !draft) return;
+  // METADATA HANDLERS
+  // ----------------------------
+  const handleMetadataChange = (
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+    >
+  ) => {
+    if (!draft) return;
+    const { name, value } = e.target;
+    setDraft({ ...draft, [name]: value } as Draft);
+    setUnsaved(true);
+  };
 
-  if (!isEventBlock(block)) {
-    alert("Coverage can only be fetched for event blocks.");
-    return;
-  }
+  const handleTagsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setTagsInput(e.target.value);
+    setUnsaved(true);
+  };
 
-  const ev = block as EventBlock;
+  const commitTags = (value: string) => {
+    setDraft((prev) => (prev ? { ...prev, tags: parseTags(value) } : prev));
+  };
 
-  const eventTitle = (ev.title || "").trim();
-  if (!eventTitle) {
-    alert("Please add an event title before fetching coverage.");
-    return;
-  }
+  // ----------------------------
+  // CLOUDINARY — UPLOAD FROM MIDJOURNEY LINK
+  // ----------------------------
+  const handleCloudinaryUpload = async () => {
+    const url = prompt("Paste Midjourney Image URL:");
+    if (!url) return;
 
-  const description = ev.description ?? "";
+    try {
+      const cloudUrl = await uploadToCloudinary(url);
 
-  try {
-    console.log("🔗 Fetching Serper coverage for:", eventTitle);
-    const result = await fetchEventCoverage(eventTitle, description, ev.date || "");
+      setDraft((prev) => (prev ? { ...prev, imageUrl: cloudUrl } : prev));
 
-    if (!result.sources?.length) {
-      alert("⚠️ No relevant sources found for this event");
+      setUnsaved(true);
+      alert("✅ Uploaded to Cloudinary!");
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to upload image.");
+    }
+  };
+
+  const saveMetadata = async () => {
+    if (!draft || !id) return;
+    try {
+      setSaving(true);
+
+      // Recompute canonical categories and persist tags from freeform input
+      const allCategories = computeAllCategories(
+        draft.category,
+        draft.secondaryCategories || []
+      );
+      const parsedTags = parseTags(tagsInput);
+
+      const payload: Draft = {
+        ...draft,
+        allCategories: (allCategories || []).filter(Boolean),
+        tags: parsedTags,
+      };
+
+      setDraft(payload);
+      await updateDraft(id, payload);
+
+      setUnsaved(false);
+      alert("✅ Metadata saved");
+    } catch (err: any) {
+      console.error(err);
+      alert("❌ Failed to save metadata: " + (err?.message || "Unknown error"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ----------------------------
+  // PUBLISH HANDLER
+  // ----------------------------
+  const handlePublish = async () => {
+    if (!id || !draft) return;
+    setPublishing(true);
+    try {
+      await updateDraft(id, { phases: draft.phases || [] });
+
+      if (draft.type === "Story") {
+        await publishStory(id);
+        alert("✅ Story published successfully!");
+      } else {
+        await publishDraft(id);
+        alert("✅ Theme published successfully!");
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert("❌ Publish failed: " + err.message);
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  // ----------------------------
+  // GPT HANDLERS
+  // ----------------------------
+
+
+  const handleGenerateTimeline = async () => {
+    if (!draft || !id) return;
+
+    setLoadingTimeline(true);
+
+    try {
+      const rawTimeline = await fetchSonarTimelineForDraft(draft);
+
+      // ✅ force to shared blocks
+      const newTimeline: TimelineBlock[] = coerceTimelineBlocks(rawTimeline as any);
+
+      const updatedDraft: Draft = {
+        ...draft,
+        timeline: newTimeline,
+        updatedAt: new Date().toISOString(),
+      };
+
+      setDraft(updatedDraft);
+
+      await updateDraft(id, {
+        timeline: newTimeline,
+        updatedAt: updatedDraft.updatedAt,
+      });
+
+      setUnsaved(false);
+      alert("✅ Timeline generated with Sonar and saved.");
+    } catch (err: any) {
+      console.error("Failed to generate timeline with Sonar:", err);
+      alert("❌ Failed to generate timeline: " + (err.message || "Unknown error"));
+    } finally {
+      setLoadingTimeline(false);
+    }
+  };
+
+  const handleGenerateAnalysis = async () => {
+    if (!draft || !id) return;
+
+    setLoadingAnalysis(true);
+    try {
+      // Adjust this call to match your gptHelpers signature.
+      // If your generateAnalysis expects (title, overview, timeline), change accordingly.
+      const analysis = await generateAnalysis(draft as any);
+
+      const updatedAt = new Date().toISOString();
+
+      setDraft({ ...draft, analysis, updatedAt });
+      await updateDraft(id, { analysis, updatedAt } as any);
+
+      setUnsaved(false);
+      alert("✅ Analysis generated and saved.");
+    } catch (err: any) {
+      console.error("❌ Failed to generate analysis:", err);
+      alert("❌ Failed to generate analysis: " + (err?.message || "Unknown error"));
+    } finally {
+      setLoadingAnalysis(false);
+    }
+  };
+
+
+  // ----------------------------
+  // TIMELINE HANDLERS (shared blocks)
+  // ----------------------------
+
+  const handleAddEvent = async () => {
+    if (!id || !draft) return;
+
+    const newBlock: EventBlock = {
+      id: nanoid(),
+      type: "event",
+      title: "",
+      description: "",
+      date: "",
+      significance: 1 as 1,
+      sources: [],
+      contexts: [],
+      faqs: [],
+      origin: "external",
+    };
+
+    const updatedTimeline: TimelineBlock[] = [...(draft.timeline || []), newBlock];
+
+    setDraft({ ...draft, timeline: updatedTimeline });
+    setUnsaved(true);
+
+    try {
+      // Use frozen boundary helper
+      await addTimelineBlock(id, newBlock);
+      alert("🆕 Blank event added. Scroll to the end of the timeline to edit it.");
+    } catch (err) {
+      console.error("❌ Failed to add event:", err);
+      alert("❌ Failed to add event. Please try again.");
+      const refreshed = await fetchDraft(id);
+      if (refreshed) setDraft(ensureDraftShape(refreshed));
+    }
+  };
+
+  const handleUpdateEvent = (
+    index: number,
+    patch: Partial<EventBlock>
+  ) => {
+    if (!draft) return;
+
+    const updatedTimeline = [...(draft.timeline || [])];
+    const block = updatedTimeline[index];
+
+    if (!block || !isEventBlock(block)) return;
+
+    const ev = block as EventBlock;
+    updatedTimeline[index] = { ...ev, ...patch } as any;
+
+    setDraft({ ...draft, timeline: updatedTimeline });
+    setUnsaved(true);
+  };
+
+  const handleDeleteEvent = async (index: number) => {
+    if (!id || !draft) return;
+    if (!window.confirm("Delete this event?")) return;
+
+    const updatedTimeline = (draft.timeline || []).filter((_, i) => i !== index);
+    const adjustedPhases = shiftPhasesAfterRemoval(
+      draft.phases || [],
+      index,
+      updatedTimeline.length
+    );
+
+    setDraft({ ...draft, timeline: updatedTimeline, phases: adjustedPhases });
+    setUnsaved(true);
+
+    try {
+      // You have a deleteTimelineEvent helper; it deletes by index regardless of type
+      await deleteTimelineEvent(id, index);
+
+      // phases need separate persistence if you want them saved on delete
+      await updateDraft(id, { phases: adjustedPhases });
+
+      const refreshed = await fetchDraft(id);
+      if (refreshed) {
+        setDraft(ensureDraftShape(refreshed));
+        setUnsaved(false);
+      }
+      alert("✅ Event deleted.");
+    } catch (err) {
+      console.error("❌ Failed to delete event:", err);
+      alert("❌ Failed to delete event.");
+      const refreshed = await fetchDraft(id);
+      if (refreshed) setDraft(ensureDraftShape(refreshed));
+    }
+  };
+
+  // ----------------------------
+  // FETCH COVERAGE HANDLER (Serper) — shared TimelineBlocks
+  // ----------------------------
+  const handleFetchCoverage = async (i: number, block: TimelineBlock) => {
+    if (!id || !draft) return;
+
+    if (!isEventBlock(block)) {
+      alert("Coverage can only be fetched for event blocks.");
       return;
     }
 
-    const existingSources: SourceItem[] = (ev.sources || []).map((s: any) => ({
-  title: s.title || "",
-  link: s.link || "",
-  sourceName: s.sourceName || "",
-  imageUrl: s.imageUrl ?? null,   // ✅ add
-  pubDate: s.pubDate ?? null,
-  score: s.score ?? null,
-  provider: s.provider ?? "manual", // keep safe default
-}));
+    const ev = block as EventBlock;
 
-const serperSources: SourceItem[] = (result.sources || []).map((s: any) => ({
-  title: s.title || "",
-  link: s.link || "",
-  sourceName: s.sourceName || "",
-  imageUrl: s.imageUrl ?? null,   // ✅ add
-  pubDate: s.pubDate ?? null,
-  score: s.score ?? null,
-  provider: (s.provider ?? "serper"), // ✅ default
-}));
-
-
-    const mergedSources = [
-      ...existingSources,
-      ...serperSources.filter((s) => !existingSources.some((e) => e.link === s.link)),
-    ];
-
-    const updatedBlock: EventBlock = {
-      ...ev,
-      sources: mergedSources,
-      origin: ev.origin || "external",
-    };
-
-    // ✅ New boundary write
-    await updateTimelineBlock(id, i, updatedBlock);
-
-    // Refresh from Firestore so UI and persistence match after auto-fetch
-    const refreshed = await fetchDraft(id);
-    if (refreshed) {
-      setDraft(ensureDraftShape(refreshed as Draft));
-    } else {
-      const updatedTimeline = [...(draft.timeline || [])];
-      updatedTimeline[i] = updatedBlock;
-      setDraft(ensureDraftShape({ ...draft, timeline: updatedTimeline }));
+    const eventTitle = (ev.title || "").trim();
+    if (!eventTitle) {
+      alert("Please add an event title before fetching coverage.");
+      return;
     }
 
-    setUnsaved(true);
-    alert(`✅ Found ${result.sources.length} sources for "${eventTitle}"`);
-  } catch (e: any) {
-    console.error("❌ Error fetching coverage:", e);
-    alert("❌ Failed to fetch coverage: " + (e?.message || "Unknown error"));
-  }
-};
+    const description = ev.description ?? "";
 
-// ----------------------------
-// RENDER
-// ----------------------------
-if (loading) return <div className="p-6">Loading...</div>;
-if (!draft) return <div className="p-6 text-red-500">Draft not found</div>;
+    try {
+      console.log("🔗 Fetching Serper coverage for:", eventTitle);
+      const result = await fetchEventCoverage(eventTitle, description, ev.date || "");
 
-return (
+      if (!result.sources?.length) {
+        alert("⚠️ No relevant sources found for this event");
+        return;
+      }
+
+      const existingSources: SourceItem[] = (ev.sources || []).map((s: any) => ({
+        title: s.title || "",
+        link: s.link || "",
+        sourceName: s.sourceName || "",
+        imageUrl: s.imageUrl ?? null,   // ✅ add
+        pubDate: s.pubDate ?? null,
+        score: s.score ?? null,
+        provider: s.provider ?? "manual", // keep safe default
+      }));
+
+      const serperSources: SourceItem[] = (result.sources || []).map((s: any) => ({
+        title: s.title || "",
+        link: s.link || "",
+        sourceName: s.sourceName || "",
+        imageUrl: s.imageUrl ?? null,   // ✅ add
+        pubDate: s.pubDate ?? null,
+        score: s.score ?? null,
+        provider: (s.provider ?? "serper"), // ✅ default
+      }));
+
+
+      const mergedSources = [
+        ...existingSources,
+        ...serperSources.filter((s) => !existingSources.some((e) => e.link === s.link)),
+      ];
+
+      const updatedBlock: EventBlock = {
+        ...ev,
+        sources: mergedSources,
+        origin: ev.origin || "external",
+      };
+
+      // ✅ New boundary write
+      await updateTimelineBlock(id, i, updatedBlock);
+
+      // Refresh from Firestore so UI and persistence match after auto-fetch
+      const refreshed = await fetchDraft(id);
+      if (refreshed) {
+        setDraft(ensureDraftShape(refreshed as Draft));
+      } else {
+        const updatedTimeline = [...(draft.timeline || [])];
+        updatedTimeline[i] = updatedBlock;
+        setDraft(ensureDraftShape({ ...draft, timeline: updatedTimeline }));
+      }
+
+      setUnsaved(true);
+      alert(`✅ Found ${result.sources.length} sources for "${eventTitle}"`);
+    } catch (e: any) {
+      console.error("❌ Error fetching coverage:", e);
+      alert("❌ Failed to fetch coverage: " + (e?.message || "Unknown error"));
+    }
+  };
+
+  // ----------------------------
+  // RENDER
+  // ----------------------------
+  if (loading) return <div className="p-6">Loading...</div>;
+  if (!draft) return <div className="p-6 text-red-500">Draft not found</div>;
+
+  return (
   <>
-    <div className="p-6 max-w-6xl mx-auto space-y-8">
-      {/* HEADER */}
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-3xl font-bold">Edit Draft</h1>
+      <div className="p-6 max-w-6xl mx-auto space-y-8">
+        {/* HEADER */}
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-3xl font-bold">Edit Draft</h1>
 
-        {unsaved && (
-          <p className="text-yellow-600 text-sm mt-1">⚠️ You have unsaved changes</p>
-        )}
+          {unsaved && (
+            <p className="text-yellow-600 text-sm mt-1">⚠️ You have unsaved changes</p>
+          )}
 
-        <div className="flex gap-3">
-          <button
-            onClick={() => navigate(-1)}
-            className="text-blue-600 hover:underline"
-          >
-            ← Back
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => navigate(-1)}
+              className="text-blue-600 hover:underline"
+            >
+              ← Back
+            </button>
 
-          <button
-            onClick={handlePublish}
-            disabled={publishing}
-            className="bg-green-600 text-white px-3 py-1.5 rounded hover:bg-green-700 disabled:opacity-50"
-          >
-            {publishing
-              ? "Publishing…"
-              : draft?.type === "Story"
-              ? "✅ Publish Story"
-              : "✅ Publish Theme"}
-          </button>
+            <button
+              onClick={handlePublish}
+              disabled={publishing}
+              className="bg-green-600 text-white px-3 py-1.5 rounded hover:bg-green-700 disabled:opacity-50"
+            >
+              {publishing
+                ? "Publishing…"
+                : draft?.type === "Story"
+                  ? "✅ Publish Story"
+                  : "✅ Publish Theme"}
+            </button>
+          </div>
         </div>
-      </div>
 
-      {/* METADATA */}
-      <div className="bg-white p-6 rounded-lg shadow space-y-4">
-        <h2 className="text-xl font-semibold mb-4">Metadata</h2>
+        {/* METADATA */}
+        <div className="bg-white p-6 rounded-lg shadow space-y-4">
+          <h2 className="text-xl font-semibold mb-4">Metadata</h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Title */}
-          <input
-            name="title"
-            value={draft.title}
-            onChange={handleMetadataChange}
-            placeholder="Title"
-            className="border p-2 rounded"
-          />
-
-          {/* Category */}
-          <div className="flex flex-col gap-1">
-            <label className="text-sm text-gray-700 font-medium">
-              Primary Category
-            </label>
-            <select
-              name="category"
-              value={draft.category}
-              onChange={(e) => handlePrimaryCategoryChange(e.target.value)}
-              className="border p-2 rounded"
-            >
-              <option value="">Select category</option>
-              {CATEGORY_OPTIONS.map((cat) => (
-                <option key={cat.value} value={cat.value}>
-                  {cat.value}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Subcategory */}
-          <div className="flex flex-col gap-1">
-            <label className="text-sm text-gray-700 font-medium">
-              Primary Subcategory
-            </label>
-            <select
-              name="subcategory"
-              value={draft.subcategory}
-              onChange={(e) => setDraft({ ...draft, subcategory: e.target.value })}
-              className="border p-2 rounded"
-              disabled={!draft.category}
-            >
-              <option value="">Select subcategory</option>
-              {primarySubcategories.map((sub) => (
-                <option key={sub} value={sub}>
-                  {sub}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Secondary Categories */}
-          <div className="md:col-span-2 flex flex-col gap-2">
-            <label className="text-sm text-gray-700 font-medium">
-              Secondary Categories
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {CATEGORY_OPTIONS.filter((c) => c.value !== draft.category).map(
-                (cat) => (
-                  <label
-                    key={`sec-cat-${cat.value}`}
-                    className="flex items-center gap-2 border rounded px-2 py-1 text-sm"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={draft.secondaryCategories?.includes(cat.value) || false}
-                      onChange={(e) =>
-                        toggleSecondaryCategory(cat.value, e.target.checked)
-                      }
-                    />
-                    <span>{cat.value}</span>
-                  </label>
-                )
-              )}
-            </div>
-          </div>
-
-          {/* Secondary Subcategories */}
-          <div className="md:col-span-2 flex flex-col gap-1">
-            <label className="text-sm text-gray-700 font-medium">
-              Secondary Subcategories
-            </label>
-            <select
-              multiple
-              value={draft.secondarySubcategories || []}
-              onChange={(e) => {
-                const selected = Array.from(e.target.selectedOptions).map(
-                  (opt) => opt.value
-                );
-                setDraft({
-                  ...draft,
-                  secondarySubcategories: selected,
-                });
-              }}
-              className="border p-2 rounded h-28"
-            >
-              {secondarySubcategoryOptions.map((sub) => (
-                <option key={sub} value={sub}>
-                  {sub}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-gray-500">Hold Ctrl/Cmd to select multiple.</p>
-          </div>
-
-          {/* Universal Card Description */}
-          <div className="md:col-span-2 flex flex-col gap-1">
-            <label className="text-sm text-gray-700 font-medium">
-              Card Preview (all screens)
-            </label>
-            <textarea
-              name="cardDescription"
-              value={draft.cardDescription || ""}
-              onChange={handleMetadataChange}
-              placeholder="Short blurb shown under the title on cards (used instead of Overview)"
-              rows={3}
-              className="border p-2 rounded"
-            />
-            <p className="text-xs text-gray-500">
-              Leave blank to fall back to the overview.
-            </p>
-          </div>
-
-          {/* Tags */}
-          <div className="md:col-span-2 flex flex-col gap-1">
-            <label className="text-sm text-gray-700 font-medium">Tags</label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Title */}
             <input
-              type="text"
-              value={tagsInput}
-              onChange={handleTagsChange}
-              onBlur={() => commitTags(tagsInput)}
-              placeholder="Comma-separated tags (e.g. politics, elections, policy)"
+              name="title"
+              value={draft.title}
+              onChange={handleMetadataChange}
+              placeholder="Title"
               className="border p-2 rounded"
             />
-            <p className="text-xs text-gray-500">
-              Saved as a tag list; you can decide how to use them later.
-            </p>
-          </div>
 
-          {/* Image URL */}
-          <input
-            name="imageUrl"
-            value={draft.imageUrl || ""}
-            onChange={handleMetadataChange}
-            placeholder="Main Thumbnail / Cover Image URL"
-            className="border p-2 rounded md:col-span-2"
-          />
+            {/* Category */}
+            <div className="flex flex-col gap-1">
+              <label className="text-sm text-gray-700 font-medium">
+                Primary Category
+              </label>
+              <select
+                name="category"
+                value={draft.category}
+                onChange={(e) => handlePrimaryCategoryChange(e.target.value)}
+                className="border p-2 rounded"
+              >
+                <option value="">Select category</option>
+                {CATEGORY_OPTIONS.map((cat) => (
+                  <option key={cat.value} value={cat.value}>
+                    {cat.value}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <button
-            type="button"
-            onClick={handleCloudinaryUpload}
-            className="px-3 py-2 bg-purple-600 text-white rounded md:col-span-2 hover:bg-purple-700"
-          >
-            ☁️ Upload Image from Midjourney Link
-          </button>
+            {/* Subcategory */}
+            <div className="flex flex-col gap-1">
+              <label className="text-sm text-gray-700 font-medium">
+                Primary Subcategory
+              </label>
+              <select
+                name="subcategory"
+                value={draft.subcategory}
+                onChange={(e) => setDraft({ ...draft, subcategory: e.target.value })}
+                className="border p-2 rounded"
+                disabled={!draft.category}
+              >
+                <option value="">Select subcategory</option>
+                {primarySubcategories.map((sub) => (
+                  <option key={sub} value={sub}>
+                    {sub}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          {/* Live thumbnail preview */}
-          {draft.imageUrl && (
-            <div className="md:col-span-2 flex justify-start items-center gap-4">
-              <img
-                src={draft.imageUrl}
-                alt="Cover"
-                className="w-48 h-32 object-cover rounded border"
-                onError={(e) => {
-                  const url = draft.imageUrl ?? "";
-                  try {
-                    if (url.startsWith("http")) {
-                      const origin = new URL(url).origin;
-                      e.currentTarget.src = `${origin}/favicon.ico`;
-                    } else {
+            {/* Secondary Categories */}
+            <div className="md:col-span-2 flex flex-col gap-2">
+              <label className="text-sm text-gray-700 font-medium">
+                Secondary Categories
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {CATEGORY_OPTIONS.filter((c) => c.value !== draft.category).map(
+                  (cat) => (
+                    <label
+                      key={`sec-cat-${cat.value}`}
+                      className="flex items-center gap-2 border rounded px-2 py-1 text-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={draft.secondaryCategories?.includes(cat.value) || false}
+                        onChange={(e) =>
+                          toggleSecondaryCategory(cat.value, e.target.checked)
+                        }
+                      />
+                      <span>{cat.value}</span>
+                    </label>
+                  )
+                )}
+              </div>
+            </div>
+
+            {/* Secondary Subcategories */}
+            <div className="md:col-span-2 flex flex-col gap-1">
+              <label className="text-sm text-gray-700 font-medium">
+                Secondary Subcategories
+              </label>
+              <select
+                multiple
+                value={draft.secondarySubcategories || []}
+                onChange={(e) => {
+                  const selected = Array.from(e.target.selectedOptions).map(
+                    (opt) => opt.value
+                  );
+                  setDraft({
+                    ...draft,
+                    secondarySubcategories: selected,
+                  });
+                }}
+                className="border p-2 rounded h-28"
+              >
+                {secondarySubcategoryOptions.map((sub) => (
+                  <option key={sub} value={sub}>
+                    {sub}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500">Hold Ctrl/Cmd to select multiple.</p>
+            </div>
+
+            {/* Universal Card Description */}
+            <div className="md:col-span-2 flex flex-col gap-1">
+              <label className="text-sm text-gray-700 font-medium">
+                Card Preview (all screens)
+              </label>
+              <textarea
+                name="cardDescription"
+                value={draft.cardDescription || ""}
+                onChange={handleMetadataChange}
+                placeholder="Short blurb shown under the title on cards (used instead of Overview)"
+                rows={3}
+                className="border p-2 rounded"
+              />
+              <p className="text-xs text-gray-500">
+                Leave blank to fall back to the overview.
+              </p>
+            </div>
+
+            {/* Tags */}
+            <div className="md:col-span-2 flex flex-col gap-1">
+              <label className="text-sm text-gray-700 font-medium">Tags</label>
+              <input
+                type="text"
+                value={tagsInput}
+                onChange={handleTagsChange}
+                onBlur={() => commitTags(tagsInput)}
+                placeholder="Comma-separated tags (e.g. politics, elections, policy)"
+                className="border p-2 rounded"
+              />
+              <p className="text-xs text-gray-500">
+                Saved as a tag list; you can decide how to use them later.
+              </p>
+            </div>
+
+            {/* Image URL */}
+            <input
+              name="imageUrl"
+              value={draft.imageUrl || ""}
+              onChange={handleMetadataChange}
+              placeholder="Main Thumbnail / Cover Image URL"
+              className="border p-2 rounded md:col-span-2"
+            />
+
+            <button
+              type="button"
+              onClick={handleCloudinaryUpload}
+              className="px-3 py-2 bg-purple-600 text-white rounded md:col-span-2 hover:bg-purple-700"
+            >
+              ☁️ Upload Image from Midjourney Link
+            </button>
+
+            {/* Live thumbnail preview */}
+            {draft.imageUrl && (
+              <div className="md:col-span-2 flex justify-start items-center gap-4">
+                <img
+                  src={draft.imageUrl}
+                  alt="Cover"
+                  className="w-48 h-32 object-cover rounded border"
+                  onError={(e) => {
+                    const url = draft.imageUrl ?? "";
+                    try {
+                      if (url.startsWith("http")) {
+                        const origin = new URL(url).origin;
+                        e.currentTarget.src = `${origin}/favicon.ico`;
+                      } else {
+                        e.currentTarget.src =
+                          "https://via.placeholder.com/150x100?text=No+Image";
+                      }
+                    } catch {
                       e.currentTarget.src =
                         "https://via.placeholder.com/150x100?text=No+Image";
                     }
-                  } catch {
-                    e.currentTarget.src =
-                      "https://via.placeholder.com/150x100?text=No+Image";
+                  }}
+                />
+                <p className="text-gray-600 text-sm">Preview of your main thumbnail</p>
+              </div>
+            )}
+
+            {/* ⭐ Tiny Pin to Featured */}
+            <div className="flex items-center gap-3 md:col-span-2 mt-2">
+              <input
+                type="checkbox"
+                id="isPinned"
+                checked={draft.isPinned || false}
+                onChange={async (e) => {
+                  const checked = e.target.checked;
+                  setDraft({ ...draft, isPinned: checked });
+
+                  if (id) {
+                    try {
+                      await updateDraft(id, {
+                        isPinned: checked,
+                        isPinnedFeatured: checked,
+                      });
+                    } catch (err) {
+                      console.error("❌ Failed to update isPinned:", err);
+                    }
                   }
                 }}
+                className="w-4 h-4"
               />
-              <p className="text-gray-600 text-sm">Preview of your main thumbnail</p>
-            </div>
-          )}
 
-          {/* ⭐ Tiny Pin to Featured */}
-          <div className="flex items-center gap-3 md:col-span-2 mt-2">
+              <label htmlFor="isPinned" className="text-sm text-gray-800">
+                Pin as Featured
+              </label>
+
+              {draft.isPinned && (
+                <select
+                  value={draft.pinnedCategory || "All"}
+                  onChange={async (e) => {
+                    const val = e.target.value;
+                    setDraft({ ...draft, pinnedCategory: val });
+
+                    if (id) {
+                      try {
+                        await updateDraft(id, { pinnedCategory: val });
+                      } catch (err) {
+                        console.error("❌ Failed to update pinnedCategory:", err);
+                      }
+                    }
+                  }}
+                  className="border p-1 rounded text-sm"
+                >
+                  <option value="All">All Categories</option>
+                  <option value={draft.category}>{draft.category}</option>
+                </select>
+              )}
+            </div>
+
+            {/* 🧱 Compact Card Toggle */}
+            <div className="flex items-start gap-3 md:col-span-2">
+              <input
+                type="checkbox"
+                id="isCompactCard"
+                checked={draft.isCompactCard || false}
+                onChange={async (e) => {
+                  const checked = e.target.checked;
+                  setDraft({ ...draft, isCompactCard: checked });
+
+                  if (id) {
+                    try {
+                      await updateDraft(id, { isCompactCard: checked });
+                    } catch (err) {
+                      console.error("❌ Failed to update isCompactCard:", err);
+                    }
+                  }
+                }}
+                className="w-4 h-4 mt-1"
+              />
+              <label htmlFor="isCompactCard" className="text-sm text-gray-800">
+                Render as compact card
+                <span className="block text-gray-500 text-xs">
+                  Home/Stories/Themes screens on WWFinal will show only the title and a
+                  small thumbnail when enabled.
+                </span>
+              </label>
+            </div>
+
+            {/* Overview */}
+            <textarea
+              name="overview"
+              value={draft.overview || ""}
+              onChange={handleMetadataChange}
+              onSelect={(e) =>
+                rememberSelection("overview", e.target as HTMLTextAreaElement)
+              }
+              placeholder="Overview"
+              rows={3}
+              className="border p-2 rounded md:col-span-2"
+            />
+
+            <div className="md:col-span-2 flex items-center gap-2 text-xs text-blue-600 mt-1">
+              <button
+                type="button"
+                onClick={() =>
+                  insertInternalLinkToken("overview", draft.overview || "", (next) =>
+                    setDraft({ ...draft, overview: next })
+                  )
+                }
+                className="text-blue-600 hover:underline"
+              >
+                🔗 Link selected text
+              </button>
+              <span className="text-gray-500">
+                Select text in the overview box, then click to link another story/theme.
+              </span>
+            </div>
+
+            <div className="md:col-span-2 text-sm text-gray-600">
+              {renderLinkedText(draft.overview || "")}
+            </div>
+          </div>
+
+          {/* 🧭 Depth Toggle Setting */}
+          <div className="flex items-center gap-2 mt-4">
             <input
               type="checkbox"
-              id="isPinned"
-              checked={draft.isPinned || false}
+              id="disableDepthToggle"
+              checked={draft.disableDepthToggle || false}
               onChange={async (e) => {
                 const checked = e.target.checked;
-                setDraft({ ...draft, isPinned: checked });
-
+                setDraft({ ...draft, disableDepthToggle: checked });
                 if (id) {
                   try {
-                    await updateDraft(id, {
-                      isPinned: checked,
-                      isPinnedFeatured: checked,
-                    });
+                    await updateDraft(id, { disableDepthToggle: checked });
                   } catch (err) {
-                    console.error("❌ Failed to update isPinned:", err);
+                    console.error("❌ Failed to update disableDepthToggle:", err);
+                    alert("❌ Failed to update disableDepthToggle.");
                   }
                 }
               }}
               className="w-4 h-4"
             />
-
-            <label htmlFor="isPinned" className="text-sm text-gray-800">
-              Pin as Featured
-            </label>
-
-            {draft.isPinned && (
-              <select
-                value={draft.pinnedCategory || "All"}
-                onChange={async (e) => {
-                  const val = e.target.value;
-                  setDraft({ ...draft, pinnedCategory: val });
-
-                  if (id) {
-                    try {
-                      await updateDraft(id, { pinnedCategory: val });
-                    } catch (err) {
-                      console.error("❌ Failed to update pinnedCategory:", err);
-                    }
-                  }
-                }}
-                className="border p-1 rounded text-sm"
-              >
-                <option value="All">All Categories</option>
-                <option value={draft.category}>{draft.category}</option>
-              </select>
-            )}
-          </div>
-
-          {/* 🧱 Compact Card Toggle */}
-          <div className="flex items-start gap-3 md:col-span-2">
-            <input
-              type="checkbox"
-              id="isCompactCard"
-              checked={draft.isCompactCard || false}
-              onChange={async (e) => {
-                const checked = e.target.checked;
-                setDraft({ ...draft, isCompactCard: checked });
-
-                if (id) {
-                  try {
-                    await updateDraft(id, { isCompactCard: checked });
-                  } catch (err) {
-                    console.error("❌ Failed to update isCompactCard:", err);
-                  }
-                }
-              }}
-              className="w-4 h-4 mt-1"
-            />
-            <label htmlFor="isCompactCard" className="text-sm text-gray-800">
-              Render as compact card
-              <span className="block text-gray-500 text-xs">
-                Home/Stories/Themes screens on WWFinal will show only the title and a
-                small thumbnail when enabled.
-              </span>
+            <label htmlFor="disableDepthToggle" className="text-sm text-gray-700">
+              Disable Depth Toggle in App
             </label>
           </div>
 
-          {/* Overview */}
-          <textarea
-            name="overview"
-            value={draft.overview || ""}
-            onChange={handleMetadataChange}
-            onSelect={(e) =>
-              rememberSelection("overview", e.target as HTMLTextAreaElement)
-            }
-            placeholder="Overview"
-            rows={3}
-            className="border p-2 rounded md:col-span-2"
-          />
+          {/* 🧠 Context Explainers for Overview */}
+          <div className="mt-6">
+            <h3 className="text-lg font-semibold mb-2">Context Explainers (Overview)</h3>
+            <p className="text-sm text-gray-500 mb-3">
+              Add terms that will be highlighted in the overview for reader context.
+            </p>
 
-          <div className="md:col-span-2 flex items-center gap-2 text-xs text-blue-600 mt-1">
+            {(draft.contexts || []).map((ctx, i) => (
+              <div key={i} className="flex gap-2 items-center mb-2">
+                <input
+                  type="text"
+                  value={ctx.term}
+                  onChange={(e) => {
+                    const updated = [...(draft.contexts || [])];
+                    updated[i].term = e.target.value;
+                    setDraft({ ...draft, contexts: updated });
+                    setUnsaved(true);
+                  }}
+                  placeholder="Term"
+                  className="border p-2 rounded flex-1"
+                />
+                <input
+                  type="text"
+                  value={ctx.explainer}
+                  onChange={(e) => {
+                    const updated = [...(draft.contexts || [])];
+                    updated[i].explainer = e.target.value;
+                    setDraft({ ...draft, contexts: updated });
+                    setUnsaved(true);
+                  }}
+                  placeholder="Explainer"
+                  className="border p-2 rounded flex-[2]"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const updated = (draft.contexts || []).filter((_, j) => j !== i);
+                    setDraft({ ...draft, contexts: updated });
+                    setUnsaved(true);
+                  }}
+                  className="text-red-500 text-sm hover:underline"
+                >
+                  ✖
+                </button>
+              </div>
+            ))}
+
             <button
               type="button"
-              onClick={() =>
-                insertInternalLinkToken("overview", draft.overview || "", (next) =>
-                  setDraft({ ...draft, overview: next })
-                )
-              }
-              className="text-blue-600 hover:underline"
+              onClick={() => {
+                setDraft({
+                  ...draft,
+                  contexts: [...(draft.contexts || []), { term: "", explainer: "" }],
+                });
+                setUnsaved(true);
+              }}
+              className="text-blue-600 text-sm hover:underline"
             >
-              🔗 Link selected text
+              ➕ Add new context term
             </button>
-            <span className="text-gray-500">
-              Select text in the overview box, then click to link another story/theme.
-            </span>
           </div>
 
-          <div className="md:col-span-2 text-sm text-gray-600">
-            {renderLinkedText(draft.overview || "")}
-          </div>
-        </div>
+          {/* ✨ GPT Auto-suggest */}
+          <button
+            type="button"
+            onClick={async () => {
+              if (!draft.overview) {
+                alert("Please write an overview first!");
+                return;
+              }
+              try {
+                const confirm = window.confirm("Use GPT to suggest contextual explainers?");
+                if (!confirm) return;
 
-        {/* 🧭 Depth Toggle Setting */}
-        <div className="flex items-center gap-2 mt-4">
-          <input
-            type="checkbox"
-            id="disableDepthToggle"
-            checked={draft.disableDepthToggle || false}
-            onChange={async (e) => {
-              const checked = e.target.checked;
-              setDraft({ ...draft, disableDepthToggle: checked });
-              if (id) {
-                try {
-                  await updateDraft(id, { disableDepthToggle: checked });
-                } catch (err) {
-                  console.error("❌ Failed to update disableDepthToggle:", err);
-                  alert("❌ Failed to update disableDepthToggle.");
+                setSaving(true);
+                const { generateContexts } = await import("../utils/gptHelpers");
+                const suggested = await generateContexts(draft.overview);
+
+                if (!suggested || suggested.length === 0) {
+                  alert("No terms found.");
+                  return;
                 }
+
+                const merged = [...(draft.contexts || []), ...suggested];
+                setDraft({ ...draft, contexts: merged });
+                setUnsaved(true);
+                alert(`✅ Added ${suggested.length} suggested context terms.`);
+              } catch (err: any) {
+                console.error("❌ GPT error:", err);
+                alert("Failed to fetch GPT suggestions. Check console.");
+              } finally {
+                setSaving(false);
               }
             }}
-            className="w-4 h-4"
-          />
-          <label htmlFor="disableDepthToggle" className="text-sm text-gray-700">
-            Disable Depth Toggle in App
-          </label>
-        </div>
-
-        {/* 🧠 Context Explainers for Overview */}
-        <div className="mt-6">
-          <h3 className="text-lg font-semibold mb-2">Context Explainers (Overview)</h3>
-          <p className="text-sm text-gray-500 mb-3">
-            Add terms that will be highlighted in the overview for reader context.
-          </p>
-
-          {(draft.contexts || []).map((ctx, i) => (
-            <div key={i} className="flex gap-2 items-center mb-2">
-              <input
-                type="text"
-                value={ctx.term}
-                onChange={(e) => {
-                  const updated = [...(draft.contexts || [])];
-                  updated[i].term = e.target.value;
-                  setDraft({ ...draft, contexts: updated });
-                  setUnsaved(true);
-                }}
-                placeholder="Term"
-                className="border p-2 rounded flex-1"
-              />
-              <input
-                type="text"
-                value={ctx.explainer}
-                onChange={(e) => {
-                  const updated = [...(draft.contexts || [])];
-                  updated[i].explainer = e.target.value;
-                  setDraft({ ...draft, contexts: updated });
-                  setUnsaved(true);
-                }}
-                placeholder="Explainer"
-                className="border p-2 rounded flex-[2]"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  const updated = (draft.contexts || []).filter((_, j) => j !== i);
-                  setDraft({ ...draft, contexts: updated });
-                  setUnsaved(true);
-                }}
-                className="text-red-500 text-sm hover:underline"
-              >
-                ✖
-              </button>
-            </div>
-          ))}
+            className="text-purple-600 text-sm hover:underline mt-2"
+          >
+            ✨ Suggest Contexts with GPT
+          </button>
 
           <button
             type="button"
-            onClick={() => {
-              setDraft({
-                ...draft,
-                contexts: [...(draft.contexts || []), { term: "", explainer: "" }],
-              });
-              setUnsaved(true);
-            }}
-            className="text-blue-600 text-sm hover:underline"
+            onClick={saveMetadata}
+            disabled={saving}
+            className="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
           >
-            ➕ Add new context term
+            {saving ? "Saving..." : "Save Metadata"}
           </button>
         </div>
-
-        {/* ✨ GPT Auto-suggest */}
-        <button
-          type="button"
-          onClick={async () => {
-            if (!draft.overview) {
-              alert("Please write an overview first!");
-              return;
-            }
-            try {
-              const confirm = window.confirm("Use GPT to suggest contextual explainers?");
-              if (!confirm) return;
-
-              setSaving(true);
-              const { generateContexts } = await import("../utils/gptHelpers");
-              const suggested = await generateContexts(draft.overview);
-
-              if (!suggested || suggested.length === 0) {
-                alert("No terms found.");
-                return;
-              }
-
-              const merged = [...(draft.contexts || []), ...suggested];
-              setDraft({ ...draft, contexts: merged });
-              setUnsaved(true);
-              alert(`✅ Added ${suggested.length} suggested context terms.`);
-            } catch (err: any) {
-              console.error("❌ GPT error:", err);
-              alert("Failed to fetch GPT suggestions. Check console.");
-            } finally {
-              setSaving(false);
-            }
-          }}
-          className="text-purple-600 text-sm hover:underline mt-2"
-        >
-          ✨ Suggest Contexts with GPT
-        </button>
-
-        <button
-          type="button"
-          onClick={saveMetadata}
-          disabled={saving}
-          className="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-        >
-          {saving ? "Saving..." : "Save Metadata"}
-        </button>
       </div>
+
 
       {/* TIMELINE */}
       <div className="bg-white p-6 rounded-lg shadow">
@@ -1831,14 +1835,14 @@ return (
 
                           <label className="block text-sm text-gray-600 mb-1 mt-3">Importance</label>
                           <select
-  value={String(ev.significance ?? 1)}
-  onChange={(e) => handleUpdateEvent(i, { significance: toSignificance(e.target.value) })}
-  className="border p-2 rounded mb-2"
->
-  <option value="1">Low</option>
-  <option value="2">Medium</option>
-  <option value="3">High</option>
-</select>
+                            value={String(ev.significance ?? 1)}
+                            onChange={(e) => handleUpdateEvent(i, { significance: toSignificance(e.target.value) })}
+                            className="border p-2 rounded mb-2"
+                          >
+                            <option value="1">Low</option>
+                            <option value="2">Medium</option>
+                            <option value="3">High</option>
+                          </select>
 
 
                           <div className="flex gap-4 items-center mt-2">
@@ -1943,101 +1947,265 @@ return (
           </>
         )}
       </div>
+{/* ===================== */}
+{/* ANALYSIS */}
+{/* ===================== */}
+<div className="bg-white p-6 rounded-lg shadow">
+  <div className="flex justify-between items-center mb-4">
+    <h2 className="text-xl font-semibold">Analysis</h2>
+    <button
+      type="button"
+      onClick={handleGenerateAnalysis}
+      disabled={loadingAnalysis}
+      className="px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+    >
+      {loadingAnalysis ? "Generating…" : "🧠 Generate Analysis"}
+    </button>
+  </div>
 
-      {/* ANALYSIS */}
-      <div className="bg-white p-6 rounded-lg shadow">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold">Analysis</h2>
-          <button
-            type="button"
-            onClick={handleGenerateAnalysis}
-            disabled={loadingAnalysis}
-            className="px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+  {showAnalysis && (
+    <div className="space-y-4">
+      {(["stakeholders", "faqs", "future"] as const).map((sectionKey) => {
+        const analysis = (draft.analysis || {}) as Record<string, any>;
+        const section = analysis[sectionKey] || [];
+
+        const labels: Record<string, string> = {
+          stakeholders: "Stakeholders",
+          faqs: "FAQs",
+          future: "Future Questions",
+        };
+
+        return (
+          <details
+            key={sectionKey}
+            className="border rounded-lg p-3 group"
           >
-            {loadingAnalysis ? "Generating…" : "🧠 Generate Analysis"}
-          </button>
-        </div>
+            <summary className="cursor-pointer font-semibold text-blue-700 select-none flex justify-between items-center">
+              {labels[sectionKey]}
+              <span className="text-gray-500 group-open:rotate-90 transition-transform">
+                ▶
+              </span>
+            </summary>
 
-        {showAnalysis && (
-          <div className="space-y-4">
-            {["stakeholders", "faqs", "future"].map((sectionKey) => {
-              const analysis = (draft.analysis || {}) as Record<string, any>;
-              const section = analysis?.[sectionKey] || [];
-              const labels: Record<string, string> = {
-                stakeholders: "Stakeholders",
-                faqs: "FAQs",
-                future: "Future Questions",
-              };
+            {/* ----------------------------- */}
+            {/* ANALYSIS SECTION BODY */}
+            {/* ----------------------------- */}
+            <div className="mt-3 space-y-3">
+              {/* ➕ Add item */}
+              <button
+                type="button"
+                onClick={() => {
+                  const newItem =
+                    sectionKey === "stakeholders"
+                      ? { name: "", detail: "" }
+                      : { question: "", answer: "" };
 
-              return (
-                <details key={sectionKey} className="border rounded-lg p-3 group">
-                  <summary className="cursor-pointer font-semibold text-blue-700 select-none flex justify-between items-center">
-                    {labels[sectionKey]}
-                    <span className="text-gray-500 group-open:rotate-90 transition-transform">
-                      ▶
-                    </span>
-                  </summary>
+                  setDraft({
+                    ...draft,
+                    analysis: {
+                      ...(analysis || {}),
+                      [sectionKey]: [...section, newItem],
+                    },
+                  });
+                  setUnsaved(true);
+                }}
+                className="text-sm text-green-700 hover:underline"
+              >
+                ➕ Add {labels[sectionKey].slice(0, -1)}
+              </button>
 
-                  {/* keep your existing analysis section body here (unchanged) */}
-                  <div className="mt-2 space-y-3">
-                    {/* ... your existing analysis UI ... */}
-                  </div>
-                </details>
-              );
-            })}
-          </div>
-        )}
+              {/* ✨ GPT Context Suggestions */}
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!section.length) {
+                    alert("No items to analyze yet.");
+                    return;
+                  }
 
-        {/* keep your existing analysis contexts + save button here (unchanged) */}
-      </div>
+                  try {
+                    setSaving(true);
+                    const suggested =
+                      await generateContextsForAnalysis(sectionKey, section);
+
+                    if (!suggested?.length) {
+                      alert("No contextual terms found.");
+                      return;
+                    }
+
+                    setDraft({
+                      ...draft,
+                      contexts: [
+                        ...(draft.contexts || []),
+                        ...suggested,
+                      ],
+                    });
+                    setUnsaved(true);
+                    alert(
+                      `✅ Added ${suggested.length} contextual explainers.`
+                    );
+                  } catch (err) {
+                    console.error(err);
+                    alert("❌ Failed to generate contexts.");
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                className="text-purple-600 text-xs hover:underline"
+              >
+                ✨ Suggest Contexts with GPT
+              </button>
+
+              {/* Items */}
+              {section.length === 0 ? (
+                <p className="text-sm text-gray-500">
+                  No {labels[sectionKey]} yet.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {section.map((item: any, idx: number) => (
+                    <li
+                      key={idx}
+                      className="p-3 bg-gray-50 rounded-md border space-y-2"
+                    >
+                      {sectionKey === "stakeholders" ? (
+                        <>
+                          <input
+                            type="text"
+                            value={item.name || ""}
+                            onChange={(e) => {
+                              const next = [...section];
+                              next[idx] = {
+                                ...item,
+                                name: e.target.value,
+                              };
+                              setDraft({
+                                ...draft,
+                                analysis: {
+                                  ...analysis,
+                                  [sectionKey]: next,
+                                },
+                              });
+                              setUnsaved(true);
+                            }}
+                            placeholder="Name"
+                            className="w-full border p-1 rounded"
+                          />
+
+                          <textarea
+                            value={item.detail || ""}
+                            onChange={(e) => {
+                              const next = [...section];
+                              next[idx] = {
+                                ...item,
+                                detail: e.target.value,
+                              };
+                              setDraft({
+                                ...draft,
+                                analysis: {
+                                  ...analysis,
+                                  [sectionKey]: next,
+                                },
+                              });
+                              setUnsaved(true);
+                            }}
+                            placeholder="Detail"
+                            className="w-full border p-1 rounded"
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <input
+                            type="text"
+                            value={item.question || ""}
+                            onChange={(e) => {
+                              const next = [...section];
+                              next[idx] = {
+                                ...item,
+                                question: e.target.value,
+                              };
+                              setDraft({
+                                ...draft,
+                                analysis: {
+                                  ...analysis,
+                                  [sectionKey]: next,
+                                },
+                              });
+                              setUnsaved(true);
+                            }}
+                            placeholder="Question"
+                            className="w-full border p-1 rounded"
+                          />
+
+                          <textarea
+                            value={item.answer || ""}
+                            onChange={(e) => {
+                              const next = [...section];
+                              next[idx] = {
+                                ...item,
+                                answer: e.target.value,
+                              };
+                              setDraft({
+                                ...draft,
+                                analysis: {
+                                  ...analysis,
+                                  [sectionKey]: next,
+                                },
+                              });
+                              setUnsaved(true);
+                            }}
+                            placeholder="Answer"
+                            className="w-full border p-1 rounded"
+                          />
+                        </>
+                      )}
+
+                      {/* ❌ Delete */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = [...section];
+                          next.splice(idx, 1);
+                          setDraft({
+                            ...draft,
+                            analysis: {
+                              ...analysis,
+                              [sectionKey]: next,
+                            },
+                          });
+                          setUnsaved(true);
+                        }}
+                        className="text-xs text-red-600 hover:underline"
+                      >
+                        Delete
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </details>
+        );
+      })}
     </div>
+  )}
 
-    {/* FACT CHECK MODAL */}
-    {isFactCheckModalOpen && (
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
-        <div className="bg-white rounded-lg shadow-lg w-full max-w-2xl p-4">
-          <h2 className="text-lg font-semibold mb-2">Apply Fact-Check Results</h2>
-          <p className="text-sm text-gray-600 mb-3">
-            Paste the JSON array returned by ChatGPT. Each item should include
-            <code className="bg-gray-100 px-1 mx-1 rounded">id</code>,
-            <code className="bg-gray-100 px-1 mx-1 rounded">confidenceScore</code>
-            and
-            <code className="bg-gray-100 px-1 mx-1 rounded">
-              confidenceExplanation
-            </code>
-            .
-          </p>
-
-          <textarea
-            className="w-full h-64 border rounded p-2 font-mono text-xs"
-            value={factCheckJson}
-            onChange={(e) => setFactCheckJson(e.target.value)}
-            placeholder='[{"id":"event-1","confidenceScore":88,"confidenceExplanation":"..."}]'
-          />
-
-          <div className="mt-4 flex justify-end gap-2">
-            <button
-              type="button"
-              className="px-3 py-1 rounded border text-sm"
-              onClick={() => {
-                setIsFactCheckModalOpen(false);
-                setFactCheckJson("");
-              }}
-              disabled={saving}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50"
-              onClick={handleApplyFactCheckResults}
-              disabled={saving}
-            >
-              {saving ? "Applying..." : "Apply"}
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
-  </>
-)};
+  {/* 💾 Save Analysis */}
+  <button
+    type="button"
+    onClick={async () => {
+      if (!id) return;
+      try {
+        await updateDraft(id, { analysis: draft.analysis });
+        setUnsaved(false);
+        alert("✅ Analysis saved successfully!");
+      } catch (err) {
+        console.error(err);
+        alert("❌ Failed to save analysis.");
+      }
+    }}
+    className="mt-4 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+  >
+    💾 Save Analysis
+  </button>
+</div>
