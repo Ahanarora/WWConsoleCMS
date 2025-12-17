@@ -30,7 +30,6 @@ import type { TimelineBlock, SourceItem, TimelineEventBlock } from "@ww/shared";
 
 // ---------------------------
 // 🔹 LEGACY CMS EVENT SHAPE
-// (kept temporarily so CMS logic does not break)
 // ---------------------------
 
 export interface TimelineEvent {
@@ -54,16 +53,12 @@ export interface TimelineEvent {
     lastCheckedAt: number;
   };
 
-  // ---------------------------
-  // 🔹 WW Presentation Controls
-  // ---------------------------
-
   origin?: "external" | "ww";
   isHighlighted?: boolean;
 }
 
 // ---------------------------
-// 🔹 Analysis Types (unchanged)
+// 🔹 Analysis Types
 // ---------------------------
 
 export interface Stakeholder {
@@ -102,16 +97,9 @@ export interface Draft {
   imageUrl?: string;
   sources?: SourceItem[];
 
-  /**
-   * ⭐ IMPORTANT CHANGE
-   * Timeline is now a mixed-content stream
-   */
   timeline: TimelineBlock[];
 
-  // Universal card description
   cardDescription?: string;
-
-  // Card descriptions per surface
   cardDescriptionHome?: string;
   cardDescriptionTheme?: string;
   cardDescriptionStory?: string;
@@ -129,9 +117,8 @@ export interface Draft {
 
   disableDepthToggle?: boolean;
 
-  // Feature flags
   isPinned?: boolean;
-  isPinnedFeatured?: boolean; // legacy support
+  isPinnedFeatured?: boolean;
   pinnedCategory?: string | "All";
   isCompactCard?: boolean;
 
@@ -145,27 +132,70 @@ export interface Draft {
 }
 
 // ---------------------------
-// 🔹 Legacy Sanitizer (visual junk only)
+// 🔹 Firestore safety helper
+// ---------------------------
+
+function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined)
+  ) as Partial<T>;
+}
+
+
+function findUndefinedPaths(
+  value: any,
+  path = "root",
+  out: string[] = []
+): string[] {
+  if (value === undefined) {
+    out.push(path);
+    return out;
+  }
+  if (value === null) return out;
+  if (Array.isArray(value)) {
+    value.forEach((v, i) => findUndefinedPaths(v, `${path}[${i}]`, out));
+    return out;
+  }
+  if (typeof value === "object") {
+    Object.keys(value).forEach((k) =>
+      findUndefinedPaths(value[k], `${path}.${k}`, out)
+    );
+    return out;
+  }
+  return out;
+}
+
+// ---------------------------
+// 🔹 Legacy Sanitizer
 // ---------------------------
 
 const sanitizeTimeline = (timeline: any[] = []): any[] =>
   (timeline || []).map((block: any) => {
-    // Preserve non-event blocks as-is (except optional source sanitize if present)
     if (block?.type && block.type !== "event") {
-      const { sources, ...rest } = block || {};
-      return {
-        ...rest,
-        ...(sources ? { sources: sanitizeSources(sources || []) } : {}),
-      };
-    }
+  const { sources, factCheck, origin, ...rest } = block || {};
+  return {
+    ...rest,
+    ...(sources ? { sources: sanitizeSources(sources || []) } : {}),
+  };
+}
 
-    // Event-like block or legacy event: strip presentation-only fields and sanitize sources
-    const { imageUrl, media, displayMode, sources, ...rest } = block || {};
-    return {
-      ...rest,
-      type: "event",
-      sources: sanitizeSources(sources || []),
-    };
+
+    const {
+  imageUrl,
+  media,
+  displayMode,
+  sources,
+  factCheck,   // ❌ explicitly drop
+  origin,      // ❌ explicitly drop
+  ...rest
+} = block || {};
+
+return {
+  ...rest,
+  type: "event",
+  sources: sanitizeSources(sources || []),
+};
+
   });
 
 // ---------------------------
@@ -182,9 +212,29 @@ const buildAllCategories = (
   return Array.from(new Set(merged.map((c) => c.trim())));
 };
 
-/**
- * Normalize draft object
- */
+function ensureEventTitles(timeline: any[] = []): any[] {
+  return (timeline || []).map((b: any) => {
+    if (b?.type !== "event") return b;
+
+    const title =
+      (typeof b.title === "string" && b.title.trim().length > 0
+        ? b.title
+        : typeof b.event === "string" && b.event.trim().length > 0
+        ? b.event
+        : typeof b.description === "string" && b.description.trim().length > 0
+        ? b.description.split(".")[0].trim()
+        : "");
+
+    return {
+      ...b,
+      title,
+      // optional backward compatibility for WWFinal if it expects `event`
+      event: typeof b.event === "string" && b.event.trim().length > 0 ? b.event : title,
+    };
+  });
+}
+
+
 const normalizeDraft = (data: Draft): Draft => ({
   ...data,
   isPinned: data.isPinned ?? data.isPinnedFeatured ?? false,
@@ -214,38 +264,27 @@ export const createDraft = async (data: Partial<Draft>) => {
       data.allCategories ||
       buildAllCategories(data.category, data.secondaryCategories || []),
     tags: data.tags || [],
-    imageUrl: data.imageUrl || "",
+    imageUrl: data.imageUrl ?? "",
     sources: sanitizeSources((data.sources as SourceItem[]) || []),
-
     timeline: [],
-
     cardDescription: data.cardDescription || "",
     cardDescriptionHome: data.cardDescriptionHome || "",
     cardDescriptionTheme: data.cardDescriptionTheme || "",
     cardDescriptionStory: data.cardDescriptionStory || "",
-
     analysis: { stakeholders: [], faqs: [], future: [] },
     disableDepthToggle: data.disableDepthToggle || false,
-
     isPinned: data.isPinned ?? data.isPinnedFeatured ?? false,
     isPinnedFeatured: data.isPinnedFeatured ?? data.isPinned ?? false,
     isCompactCard: data.isCompactCard ?? false,
     pinnedCategory: data.pinnedCategory ?? "All",
-
     keywords: data.keywords || [],
     status: data.status || "draft",
-
     slug:
       data.slug ||
       (data.title
-        ? data.title
-            .toLowerCase()
-            .replace(/\s+/g, "-")
-            .replace(/[^\w-]/g, "")
+        ? data.title.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, "")
         : ""),
-
     editorNotes: data.editorNotes || "",
-
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
@@ -257,10 +296,7 @@ export const createDraft = async (data: Partial<Draft>) => {
 export const fetchDrafts = async (): Promise<Draft[]> => {
   const snapshot = await getDocs(collection(db, "drafts"));
   return snapshot.docs.map((d) =>
-    normalizeDraft({
-      id: d.id,
-      ...(d.data() as Draft),
-    })
+    normalizeDraft({ id: d.id, ...(d.data() as Draft) })
   );
 };
 
@@ -302,27 +338,39 @@ export const updateDraft = async (id: string, patch: Partial<Draft>) => {
     patch.secondaryCategories || []
   );
 
-  await setDoc(
-    ref,
-    {
-      ...patch,
-      ...(patch.sources
-        ? { sources: sanitizeSources(patch.sources as any[]) }
-        : {}),
-      ...(patch.timeline
-        ? {
-            timeline: normalizeTimeline(
-              sanitizeTimeline(patch.timeline as any[])
-            ),
-          }
-        : {}),
-      ...(patch.category || patch.secondaryCategories
-        ? { allCategories: mergedAllCategories }
-        : {}),
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
+  const cleanedPatch = stripUndefined({
+  ...patch,
+  ...(patch.sources
+    ? { sources: sanitizeSources(patch.sources as any[]) }
+    : {}),
+  ...(patch.timeline
+    ? {
+        timeline: normalizeTimeline(
+          sanitizeTimeline(patch.timeline as any[])
+        ),
+      }
+    : {}),
+  ...(patch.category || patch.secondaryCategories
+    ? { allCategories: mergedAllCategories }
+    : {}),
+  updatedAt: serverTimestamp(),
+});
+
+// 🔍 make undefined visible as missing keys in logs
+const debugPayload = JSON.parse(JSON.stringify(cleanedPatch));
+
+const undefinedPaths = findUndefinedPaths(cleanedPatch);
+if (undefinedPaths.length) {
+  console.error("🔥 Firestore write blocked — undefined at:", undefinedPaths);
+  console.error("🔥 Payload (JSON-safe):", debugPayload);
+  throw new Error(
+    `Firestore write aborted due to undefined at: ${undefinedPaths.join(", ")}`
   );
+}
+
+
+
+  await setDoc(ref, cleanedPatch, { merge: true });
 };
 
 export const deleteDraft = async (id: string) => {
@@ -353,13 +401,9 @@ export const deleteDraft = async (id: string) => {
 };
 
 // ---------------------------
-// 🔹 Timeline Mutations (BOUNDARY FROZEN)
+// 🔹 Timeline Mutations
 // ---------------------------
 
-/**
- * ✅ New: write a fully-formed shared TimelineBlock at an index.
- * This is what EditDraft should call when saving an event block.
- */
 export const updateTimelineBlock = async (
   id: string,
   index: number,
@@ -374,9 +418,6 @@ export const updateTimelineBlock = async (
   await updateDraft(id, { timeline: updatedTimeline });
 };
 
-/**
- * ✅ New: append a fully-formed shared TimelineBlock.
- */
 export const addTimelineBlock = async (id: string, block: TimelineBlock) => {
   const draft = await fetchDraft(id);
   if (!draft) throw new Error("Draft not found");
@@ -385,9 +426,6 @@ export const addTimelineBlock = async (id: string, block: TimelineBlock) => {
   await updateDraft(id, { timeline: updatedTimeline });
 };
 
-/**
- * Legacy: append event using legacy CMS input.
- */
 export const addTimelineEvent = async (
   id: string,
   eventData: Partial<TimelineEvent>
@@ -396,14 +434,11 @@ export const addTimelineEvent = async (
   if (!draft) throw new Error("Draft not found");
 
   const newBlock = mapLegacyEventToEventBlock(eventData);
-
   const updatedTimeline = [...draft.timeline, newBlock];
+
   await updateDraft(id, { timeline: updatedTimeline });
 };
 
-/**
- * Legacy: patch/update an existing event block using legacy CMS input.
- */
 export const updateTimelineEvent = async (
   id: string,
   index: number,
@@ -434,7 +469,7 @@ export const deleteTimelineEvent = async (id: string, index: number) => {
 };
 
 // ---------------------------
-// 🔹 Publishing (unchanged behavior)
+// 🔹 Publishing
 // ---------------------------
 
 export const publishDraft = async (id: string) => {
@@ -446,10 +481,9 @@ export const publishDraft = async (id: string) => {
   const slug =
     draft.slug ||
     draft.title.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, "");
+    
+const sanitizedTimeline = ensureEventTitles(normalizeTimeline(draft.timeline || []));
 
-  const sanitizedTimeline = normalizeTimeline(
-    sanitizeTimeline(draft.timeline || [])
-  );
 
   const allSources =
     sanitizedTimeline
