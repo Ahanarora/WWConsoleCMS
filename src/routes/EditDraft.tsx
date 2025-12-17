@@ -1391,7 +1391,6 @@ Events:
             {saving ? "Saving..." : "Save Metadata"}
           </button>
         </div>
-      </div>
 
 
       {/* TIMELINE */}
@@ -2207,5 +2206,9 @@ Events:
     className="mt-4 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
   >
     💾 Save Analysis
-  </button>
-</div>
+    </button>
+</div> {/* closes Analysis card */}
+</div> {/* closes outer page wrapper */}
+</>
+);
+}
