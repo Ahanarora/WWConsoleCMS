@@ -114,6 +114,8 @@ type EventBlock = TimelineEventBlock & EventBlockExtras;
 
 const isEventBlock = (b: TimelineBlock): b is TimelineEventBlock =>
   !!b && (b as any).type === "event";
+const isImageBlock = (b: TimelineBlock): b is any =>
+  !!b && (b as any).type === "image";
 
 // ----------------------------
 // Sonar/legacy timeline -> shared TimelineBlock[]
@@ -234,16 +236,16 @@ export default function EditDraft() {
     CATEGORY_OPTIONS.flatMap((c) => c.subcategories || [])
   );
 
-  const stripSourceMedia = (sources: SourceItem[] = []): SourceItem[] =>
-    (sources || []).map((src: any) => {
-      const { imageUrl, preview, ...rest } = src || {};
-      return rest;
-    });
+const stripSourceMedia = (sources: SourceItem[] = []): SourceItem[] =>
+  (sources || []).map((src: any) => {
+    const { imageUrl, preview, ...rest } = src || {};
+    return rest;
+  });
 
-  const stripTimelineMedia = (timeline: TimelineBlock[] = []): TimelineBlock[] =>
-    (timeline || []).map((block: any) => {
-      // remove visual junk if it exists, keep the rest
-      const { imageUrl, media, displayMode, sources, ...rest } = block || {};
+const stripTimelineMedia = (timeline: TimelineBlock[] = []): TimelineBlock[] =>
+  (timeline || []).map((block: any) => {
+    // remove visual junk if it exists, keep the rest
+    const { imageUrl, media, displayMode, sources, ...rest } = block || {};
       const base = { ...rest, sources: stripSourceMedia(sources || []) };
       if ((base as any)?.type === "event") {
         return {
@@ -686,6 +688,34 @@ export default function EditDraft() {
       const refreshed = await fetchDraft(id);
       if (refreshed) setDraft(ensureDraftShape(refreshed));
     }
+  };
+
+  const handleAddImage = (index: number) => {
+    if (!draft) return;
+    const imgBlock = {
+      id: nanoid(),
+      type: "image" as const,
+      url: "",
+      caption: "",
+      aspectRatio: undefined,
+    };
+    const next = [...(draft.timeline || [])];
+    next.splice(index, 0, imgBlock as any);
+    setDraft({ ...draft, timeline: next });
+    setUnsaved(true);
+  };
+
+  const handleUpdateImage = (
+    index: number,
+    patch: Partial<{ url: string; caption?: string; aspectRatio?: number }>
+  ) => {
+    if (!draft) return;
+    const timeline = [...(draft.timeline || [])];
+    const block = timeline[index];
+    if (!block || !isImageBlock(block)) return;
+    timeline[index] = { ...block, ...patch } as any;
+    setDraft({ ...draft, timeline });
+    setUnsaved(true);
   };
 
   const handleCopyEventsForChatGPT = () => {
@@ -1357,13 +1387,14 @@ export default function EditDraft() {
               <p className="text-gray-500 mb-3">No events yet.</p>
             ) : (
               <div className="space-y-4 mb-4">
-                {(draft.timeline || []).map((block, i) => {
-                  const isEvent = isEventBlock(block);
-                  const ev = isEvent ? (block as EventBlock) : null;
+            {(draft.timeline || []).map((block, i) => {
+              const isEvent = isEventBlock(block);
+              const isImage = isImageBlock(block);
+              const ev = isEvent ? (block as EventBlock) : null;
 
-                  return (
-                    <div key={block?.id || `block-${i}`} className="mb-6">
-                      {/* Insert Phase button BEFORE this block */}
+              return (
+                <div key={block?.id || `block-${i}`} className="mb-6">
+                  {/* Insert Phase button BEFORE this block */}
                       <button
                         type="button"
                         className="text-purple-600 text-xs hover:underline mb-2"
@@ -1377,9 +1408,17 @@ export default function EditDraft() {
                           setDraft({ ...draft, phases });
                           setUnsaved(true);
                         }}
-                      >
-                        ➕ Insert Phase Here
-                      </button>
+                  >
+                    ➕ Insert Phase Here
+                  </button>
+
+                  <button
+                    type="button"
+                    className="text-green-700 text-xs hover:underline mb-2 ml-2"
+                    onClick={() => handleAddImage(i)}
+                  >
+                    🖼️ Insert Image Here
+                  </button>
 
                       {/* PHASE EDITOR */}
                       {(draft.phases || [])
@@ -1470,24 +1509,72 @@ export default function EditDraft() {
                           );
                         })}
 
-                      {/* NON-EVENT BLOCK */}
-                      {!isEvent && (
-                        <div className="border p-3 rounded bg-gray-50">
-                          <p className="text-sm text-gray-700">
-                            Non-event block:{" "}
-                            <span className="font-semibold">
-                              {(block as any)?.type || "unknown"}
-                            </span>
+                  {/* IMAGE BLOCK */}
+                  {isImage && (
+                    <div className="border p-3 rounded bg-gray-50 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-800">
+                            Image Block #{i + 1}
                           </p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            (CMS editing UI not implemented for this block type yet.)
+                          <p className="text-xs text-gray-500">
+                            Enter URL (required), caption, and optional aspect ratio.
                           </p>
                         </div>
-                      )}
+                        <button
+                          className="text-red-600 text-sm hover:underline"
+                          onClick={() => handleDeleteEvent(i)}
+                        >
+                          ✖ Delete
+                        </button>
+                      </div>
+
+                      <input
+                        value={(block as any).url || ""}
+                        onChange={(e) => handleUpdateImage(i, { url: e.target.value })}
+                        placeholder="Image URL (required)"
+                        className="border p-2 rounded w-full"
+                      />
+
+                      <input
+                        value={(block as any).caption || ""}
+                        onChange={(e) => handleUpdateImage(i, { caption: e.target.value })}
+                        placeholder="Caption (optional)"
+                        className="border p-2 rounded w-full"
+                      />
+
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={
+                          typeof (block as any).aspectRatio === "number"
+                            ? (block as any).aspectRatio
+                            : ""
+                        }
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          handleUpdateImage(i, {
+                            aspectRatio: Number.isFinite(val) ? val : undefined,
+                          });
+                        }}
+                        placeholder="Aspect ratio (e.g., 1.5 for 3:2) optional"
+                        className="border p-2 rounded w-full"
+                      />
+
+                      {(block as any).url ? (
+                        <img
+                          src={(block as any).url}
+                          alt={(block as any).caption || "Timeline image"}
+                          className="w-full rounded border"
+                          loading="lazy"
+                        />
+                      ) : null}
+                    </div>
+                  )}
 
                       {/* EVENT BLOCK */}
-                      {isEvent && ev && (
-                        <div className="border p-3 rounded">
+                  {isEvent && ev && (
+                    <div className="border p-3 rounded">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
                             <input
                               value={ev.date || ""}
@@ -1842,14 +1929,21 @@ export default function EditDraft() {
                           )}
                         </div>
                       )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </>
+                </div>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => handleAddImage((draft.timeline || []).length)}
+              className="text-blue-600 text-sm hover:underline"
+            >
+              🖼️ Add Image at End
+            </button>
+          </div>
         )}
-      </div>
+      </>
+    )}
+    </div>
 {/* ===================== */}
 {/* ANALYSIS */}
 {/* ===================== */}
