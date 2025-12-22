@@ -688,6 +688,48 @@ export default function EditDraft() {
     }
   };
 
+  const handleCopyEventsForChatGPT = () => {
+    if (!draft || !draft.timeline?.length) {
+      alert("No timeline events to copy.");
+      return;
+    }
+
+    const events = (draft.timeline || []).filter(isEventBlock) as EventBlock[];
+    if (!events.length) {
+      alert("No events found in the timeline.");
+      return;
+    }
+
+    const lines = events.map((ev, idx) => {
+      const legacyTitle = (ev as any).event;
+      const title = ev.title || legacyTitle || `(Untitled event ${idx + 1})`;
+      const date = ev.date || "";
+      const desc = ev.description || "";
+      return [
+        `#${idx + 1}`,
+        `Title: ${title}`,
+        date ? `Date: ${date}` : "Date: (not set)",
+        desc ? `Description: ${desc}` : "Description: (not provided)",
+        "",
+      ].join("\n");
+    });
+
+    const payload = `Timeline Events (${events.length})\n\n${lines.join("\n")}`;
+
+    if (!navigator?.clipboard) {
+      alert("Clipboard not available in this browser.");
+      return;
+    }
+
+    navigator.clipboard
+      .writeText(payload)
+      .then(() => alert("Events copied for ChatGPT."))
+      .catch((err) => {
+        console.error("Clipboard error", err);
+        alert("Failed to copy events. Check console.");
+      });
+  };
+
   // ----------------------------
   // FETCH COVERAGE HANDLER (Serper) — shared TimelineBlocks
   // ----------------------------
@@ -1259,6 +1301,15 @@ export default function EditDraft() {
               className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
             >
               {loadingTimeline ? "Generating…" : "🧠 Generate Timeline"}
+            </button>
+
+            <button
+              type="button"
+              className="px-3 py-1 rounded border border-blue-600 text-blue-600 text-sm hover:bg-blue-50 disabled:opacity-50"
+              onClick={handleCopyEventsForChatGPT}
+              disabled={!draft || !draft.timeline || draft.timeline.length === 0}
+            >
+              Copy Events for ChatGPT
             </button>
 
             <button
