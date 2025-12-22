@@ -30,7 +30,6 @@ function stripUndefinedDeep<T>(value: T): T {
         .filter(
           ([key, v]) =>
             v !== undefined &&
-            key !== "factCheck" && // 🔥 explicitly drop CMS-only fields
             key !== "origin"
         )
         .map(([k, v]) => [k, stripUndefinedDeep(v)])
@@ -66,6 +65,14 @@ export const mapLegacyEventToEventBlock = (
     date: safeDate(eventData.date),
     significance: coerceSignificance(eventData.significance),
     sources: sanitizeSources(eventData.sources || []),
+    factStatus:
+      eventData.factStatus === "debated" ||
+      eventData.factStatus === "partially_debated" ||
+      eventData.factStatus === "consensus"
+        ? eventData.factStatus
+        : undefined,
+    factNote: eventData.factNote ?? undefined,
+    factUpdatedAt: eventData.factUpdatedAt ?? undefined,
   };
 
   return stripUndefinedDeep(block);
@@ -95,6 +102,16 @@ export const updateEventBlockFromLegacy = (
       eventData.sources !== undefined
         ? sanitizeSources(eventData.sources)
         : existing.sources,
+    factStatus:
+      eventData.factStatus !== undefined
+        ? (eventData.factStatus as any)
+        : existing.factStatus,
+    factNote:
+      eventData.factNote !== undefined ? eventData.factNote : existing.factNote,
+    factUpdatedAt:
+      eventData.factUpdatedAt !== undefined
+        ? eventData.factUpdatedAt
+        : existing.factUpdatedAt,
   };
 
   return stripUndefinedDeep(updated);

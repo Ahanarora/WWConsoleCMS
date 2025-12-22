@@ -47,11 +47,10 @@ export interface TimelineEvent {
 
   contexts?: { term: string; explainer: string }[];
   faqs?: { question: string; answer: string }[];
-  factCheck?: {
-    confidenceScore: number;
-    explanation: string;
-    lastCheckedAt: number;
-  };
+
+  factStatus?: "consensus" | "debated" | "partially_debated";
+  factNote?: string;
+  factUpdatedAt?: number | string;
 
   origin?: "external" | "ww";
   isHighlighted?: boolean;
@@ -172,30 +171,20 @@ function findUndefinedPaths(
 const sanitizeTimeline = (timeline: any[] = []): any[] =>
   (timeline || []).map((block: any) => {
     if (block?.type && block.type !== "event") {
-  const { sources, factCheck, origin, ...rest } = block || {};
-  return {
-    ...rest,
-    ...(sources ? { sources: sanitizeSources(sources || []) } : {}),
-  };
-}
+      const { sources, origin, ...rest } = block || {};
+      return {
+        ...rest,
+        ...(sources ? { sources: sanitizeSources(sources || []) } : {}),
+      };
+    }
 
+    const { sources, ...rest } = block || {};
 
-    const {
-  imageUrl,
-  media,
-  displayMode,
-  sources,
-  factCheck,   // ❌ explicitly drop
-  origin,      // ❌ explicitly drop
-  ...rest
-} = block || {};
-
-return {
-  ...rest,
-  type: "event",
-  sources: sanitizeSources(sources || []),
-};
-
+    return {
+      ...rest,
+      type: "event",
+      sources: sanitizeSources(sources || []),
+    };
   });
 
 // ---------------------------

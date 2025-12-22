@@ -91,20 +91,11 @@ const toSignificance = (v: string): 1 | 2 | 3 => {
   return 1;
 };
 
-
-function getFactCheckDotColor(score: number): string {
-  if (score >= 85) return "#16a34a"; // green
-  if (score >= 70) return "#eab308"; // yellow
-  if (score >= 50) return "#f97316"; // orange
-  return "#dc2626"; // red
-}
-
-function getFactCheckBadgeClass(score: number): string {
-  if (score >= 85) return "bg-green-100 text-green-800";
-  if (score >= 70) return "bg-yellow-100 text-yellow-800";
-  if (score >= 50) return "bg-orange-100 text-orange-800";
-  return "bg-red-100 text-red-800";
-}
+const FACT_STATUS_OPTIONS = [
+  { value: "consensus", label: "Consensus" },
+  { value: "partially_debated", label: "Partially Debated" },
+  { value: "debated", label: "Debated" },
+] as const;
 
 // ----------------------------------------
 // ✅ Shared timeline blocks + CMS-only extras (kept local for now)
@@ -113,11 +104,9 @@ function getFactCheckBadgeClass(score: number): string {
 type EventBlockExtras = {
   contexts?: { term: string; explainer: string }[];
   faqs?: { question: string; answer: string }[];
-  factCheck?: {
-    confidenceScore: number;
-    explanation: string;
-    lastCheckedAt: number;
-  };
+  factStatus?: "consensus" | "debated" | "partially_debated";
+  factNote?: string;
+  factUpdatedAt?: number | string;
   origin?: "external" | "ww";
 };
 
@@ -140,7 +129,6 @@ type LegacyTimelineEvent = {
   sources?: any[];
   contexts?: any[];
   faqs?: any[];
-  factCheck?: any;
   origin?: any;
 };
 
@@ -188,7 +176,6 @@ const coerceTimelineBlocks = (input: any[] = []): TimelineBlock[] => {
         // keep CMS extras if present
         contexts: Array.isArray(e.contexts) ? e.contexts : [],
         faqs: Array.isArray(e.faqs) ? e.faqs : [],
-        factCheck: e.factCheck,
         origin: e.origin,
       } as any;
     })
@@ -209,8 +196,6 @@ export default function EditDraft() {
   const [selectionMap, setSelectionMap] = useState<
     Record<string, { start: number; end: number }>
   >({});
-  const [isFactCheckModalOpen, setIsFactCheckModalOpen] = useState(false);
-  const [factCheckJson, setFactCheckJson] = useState("");
   const [tagsInput, setTagsInput] = useState("");
 
   const [showTimeline, setShowTimeline] = useState(true);
@@ -259,7 +244,19 @@ export default function EditDraft() {
     (timeline || []).map((block: any) => {
       // remove visual junk if it exists, keep the rest
       const { imageUrl, media, displayMode, sources, ...rest } = block || {};
-      return { ...rest, sources: stripSourceMedia(sources || []) };
+      const base = { ...rest, sources: stripSourceMedia(sources || []) };
+      if ((base as any)?.type === "event") {
+        return {
+          ...base,
+          factStatus:
+            base.factStatus === "debated" ||
+            base.factStatus === "partially_debated" ||
+            base.factStatus === "consensus"
+              ? base.factStatus
+              : "consensus",
+        } as TimelineBlock;
+      }
+      return base as TimelineBlock;
     });
 
   const handlePrimaryCategoryChange = (value: string) => {
@@ -322,152 +319,6 @@ export default function EditDraft() {
     cardDescriptionTheme: normalizeText(data.cardDescriptionTheme),
     cardDescriptionStory: normalizeText(data.cardDescriptionStory),
   });
-
-  interface FactCheckResult {
-    id: string;
-    confidenceScore: number;
-    confidenceExplanation: string;
-  }
-
-  const handleCopyEventsForFactCheck = () => {
-    if (!draft || !draft.timeline || draft.timeline.length === 0) {
-      alert("No timeline events to copy.");
-      return;
-    }
-
-    const header = `You are a fact-checking assistant. For each event below, fact-check the explanation using the listed sources and your own browsing.
-
-Return ONLY a JSON array of objects. Each object MUST have:
-- "id": the event id (string, as provided)
-- "confidenceScore": integer from 0 to 100
-- "confidenceExplanation": short 1–3 sentence explanation of why you gave that score (number and credibility of sources, agreement between sources, recency, etc.)
-
-Example of desired output:
-[
-  {
-    "id": "event-1",
-    "confidenceScore": 88,
-    "confidenceExplanation": "Verified by multiple major outlets with consistent details."
-  }
-]
-
-Events:
-`;
-
-    // stable event numbering across mixed blocks
-    const eventIndices = (draft.timeline || [])
-      .map((b, idx) => (isEventBlock(b) ? idx : -1))
-      .filter((idx) => idx >= 0);
-
-    const body = eventIndices
-      .map((timelineIdx, eventIdx) => {
-        const block = draft.timeline[timelineIdx];
-        const ev = block as EventBlock;
-
-        const sourcesText =
-          ev.sources
-            ?.map((s) => `- ${s.link || s.title || s.sourceName || ""}`)
-            .join("\n") || "- (no sources listed)";
-
-        const fallbackId = `event-${eventIdx + 1}`;
-
-        return [
-          "#EVENT",
-          `id: ${ev.id ?? fallbackId}`,
-          `title: ${ev.title || "(no title)"}`,
-          `explanation: ${ev.description || "(no explanation)"}`,
-          "",
-          "sources:",
-          sourcesText,
-          "",
-        ].join("\n");
-      })
-      .join("\n");
-
-    const fullText = `${header}\n${body}`;
-
-    if (!navigator?.clipboard) {
-      alert("Clipboard not available in this browser.");
-      return;
-    }
-
-    navigator.clipboard
-      .writeText(fullText)
-      .then(() => {
-        alert("All events copied for fact-checking. Paste into ChatGPT.");
-      })
-      .catch((err) => {
-        console.error("Clipboard error", err);
-        alert("Failed to copy to clipboard.");
-      });
-  };
-
-  const handleApplyFactCheckResults = async () => {
-    if (!draft) return;
-
-    try {
-      const parsed = JSON.parse(factCheckJson) as FactCheckResult[];
-      if (!Array.isArray(parsed)) throw new Error("JSON is not an array");
-
-      // map timeline index -> event number (1-based)
-      const eventIndexToNumber: Record<number, number> = {};
-      let counter = 0;
-      (draft.timeline || []).forEach((b, idx) => {
-        if (isEventBlock(b)) {
-          counter += 1;
-          eventIndexToNumber[idx] = counter;
-        }
-      });
-
-      const updatedTimeline: TimelineBlock[] = (draft.timeline || []).map(
-        (block, idx) => {
-          if (!isEventBlock(block)) return block;
-
-          const ev = block as EventBlock;
-          const eventNum = eventIndexToNumber[idx] || idx + 1;
-
-          const match = parsed.find(
-            (item) => item.id === ev.id || item.id === `event-${eventNum}`
-          );
-          if (!match) return block;
-
-          return {
-            ...ev,
-            factCheck: {
-              confidenceScore: match.confidenceScore,
-              explanation: match.confidenceExplanation,
-              lastCheckedAt: Date.now(),
-            },
-          } as any;
-        }
-      );
-
-      const updatedDraft: Draft = {
-        ...draft,
-        timeline: updatedTimeline,
-      };
-
-      setSaving(true);
-      const targetId = draft.id || id;
-      if (!targetId) {
-        throw new Error("Draft id missing.");
-      }
-
-      await updateDraft(targetId, { timeline: updatedTimeline });
-      setDraft(updatedDraft);
-      setIsFactCheckModalOpen(false);
-      setFactCheckJson("");
-
-      alert("Fact-check data applied to events.");
-    } catch (err) {
-      console.error(err);
-      alert(
-        "Could not parse JSON. Make sure you pasted valid JSON array with id, confidenceScore, and confidenceExplanation."
-      );
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const shiftPhasesAfterRemoval = (
     phases: Draft["phases"] = [],
@@ -761,6 +612,9 @@ Events:
       sources: [],
       contexts: [],
       faqs: [],
+      factStatus: "consensus",
+      factUpdatedAt: Date.now(),
+      factNote: "",
       origin: "external",
     };
 
@@ -1408,24 +1262,6 @@ Events:
             </button>
 
             <button
-              type="button"
-              className="px-3 py-1 rounded bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50"
-              onClick={handleCopyEventsForFactCheck}
-              disabled={!draft || !draft.timeline || draft.timeline.length === 0}
-            >
-              Copy Events for Fact-Check
-            </button>
-
-            <button
-              type="button"
-              className="px-3 py-1 rounded border border-blue-600 text-blue-600 text-sm hover:bg-blue-50 disabled:opacity-50"
-              onClick={() => setIsFactCheckModalOpen(true)}
-              disabled={!draft || !draft.timeline || draft.timeline.length === 0}
-            >
-              Apply Fact-Check Results
-            </button>
-
-            <button
               onClick={handleAddEvent}
               className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
             >
@@ -1697,34 +1533,51 @@ Events:
                             {renderLinkedText(ev.description ?? "")}
                           </div>
 
-                          {ev.factCheck && typeof ev.factCheck.confidenceScore === "number" && (
-                            <div className="mt-3 text-xs text-gray-700 border-t pt-2 border-dashed border-gray-200">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span
-                                  className={
-                                    "inline-flex items-center px-2 py-0.5 rounded-full font-semibold " +
-                                    getFactCheckBadgeClass(ev.factCheck.confidenceScore)
-                                  }
-                                >
-                                  {ev.factCheck.confidenceScore}% fact-check confidence
-                                </span>
-                                <span
-                                  className="w-2.5 h-2.5 rounded-full"
-                                  style={{
-                                    backgroundColor: getFactCheckDotColor(ev.factCheck.confidenceScore),
-                                  }}
-                                />
-                              </div>
-                              {ev.factCheck.explanation && (
-                                <p className="leading-snug">{ev.factCheck.explanation}</p>
-                              )}
-                              {ev.factCheck.lastCheckedAt && (
-                                <p className="mt-1 text-[10px] text-gray-400">
-                                  Last checked: {new Date(ev.factCheck.lastCheckedAt).toLocaleString()}
-                                </p>
-                              )}
+                          <div className="mt-3 border-t border-dashed border-gray-200 pt-3 space-y-2">
+                            <label className="text-sm font-medium text-gray-700">
+                              Fact status
+                            </label>
+                            <select
+                              value={ev.factStatus || "consensus"}
+                              onChange={(e) =>
+                                handleUpdateEvent(i, {
+                                  factStatus: e.target.value as EventBlock["factStatus"],
+                                  factUpdatedAt: Date.now(),
+                                })
+                              }
+                              className="border p-2 rounded text-sm"
+                            >
+                              {FACT_STATUS_OPTIONS.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+
+                            <div className="flex flex-col gap-1">
+                              <label className="text-sm font-medium text-gray-700">
+                                Fact note / description (shown in app modal)
+                              </label>
+                              <textarea
+                                value={ev.factNote || ""}
+                                onChange={(e) =>
+                                  handleUpdateEvent(i, {
+                                    factNote: e.target.value,
+                                    factUpdatedAt: Date.now(),
+                                  })
+                                }
+                                rows={2}
+                                className="border p-2 rounded text-sm"
+                                placeholder="Optional explanation"
+                              />
                             </div>
-                          )}
+                            <p className="text-xs text-gray-500">
+                              Last updated:{" "}
+                              {ev.factUpdatedAt
+                                ? new Date(ev.factUpdatedAt as any).toLocaleString()
+                                : "Not set"}
+                            </p>
+                          </div>
 
                           {/* 🧠 Context Explainers for this Event */}
                           <div className="mt-2">
