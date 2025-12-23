@@ -1,5 +1,10 @@
+// ----------------------------------------
+// src/utils/fetchCoverage.ts
+// ----------------------------------------
+
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { app } from "../firebase";
+import type { SourceItem } from "@ww/shared";
 
 const functions = getFunctions(app, "asia-south1");
 
@@ -11,14 +16,15 @@ interface FetchEventCoverageRequest {
   keywords?: string[]; // ✅ added field
 }
 
-
-interface SourceItem {
+// Raw backend shape (do NOT name this SourceItem)
+interface CoverageSourceRaw {
   title: string;
   link: string;
-  imageUrl: string | null;
   sourceName: string;
-  pubDate?: string;
+  imageUrl?: string | null;
+  pubDate?: string | null;
   score?: number;
+  provider?: string;
 }
 
 interface FetchEventCoverageResponse {
@@ -27,21 +33,41 @@ interface FetchEventCoverageResponse {
   trace?: any;
 }
 
+function toSharedSourceItem(raw: CoverageSourceRaw): SourceItem {
+  return {
+    title: raw.title,
+    link: raw.link,
+    sourceName: raw.sourceName,
+    imageUrl: raw.imageUrl ?? null,
+    pubDate: raw.pubDate ?? null,
+    provider: (raw.provider as any) ?? "serper",
+    // if your shared type includes score, this will be accepted; otherwise it’s harmlessly ignored at runtime
+    ...(raw.score != null ? { score: raw.score } : {}),
+  } as SourceItem;
+}
+
 export async function fetchEventCoverage(
   data: FetchEventCoverageRequest
 ): Promise<FetchEventCoverageResponse> {
   try {
-    
     const callable = httpsCallable(functions, "fetchEventCoverage");
 
-    // Destructure from `data`
-    const { event, description, date, debug } = data;
+    const { event, description, date, debug, keywords } = data;
 
-    // Call the Cloud Function
-    const result = await callable({ event, description, date, debug });
+    const result = await callable({ event, description, date, debug, keywords });
+    const payload = result.data as any;
 
-    // Return its data
-    return result.data as FetchEventCoverageResponse;
+    const rawSources: CoverageSourceRaw[] = Array.isArray(payload?.sources)
+      ? payload.sources
+      : [];
+
+    const sources: SourceItem[] = rawSources.map(toSharedSourceItem);
+
+    return {
+      sources,
+      ranked: typeof payload?.ranked === "number" ? payload.ranked : sources.length,
+      trace: payload?.trace,
+    };
   } catch (error: any) {
     console.error("Error calling fetchEventCoverage:", error);
     throw new Error(error.message || "Failed to fetch event coverage");

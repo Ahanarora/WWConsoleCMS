@@ -2,15 +2,35 @@
 // src/routes/Layout.tsx
 // ----------------------------------------
 
-import React from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { auth } from "../firebase";
 
 export default function Layout() {
+  const navigate = useNavigate();
+  const [user, setUser] = useState(() => auth.currentUser);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (nextUser) => setUser(nextUser));
+    return () => unsub();
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error("❌ Logout failed:", err);
+    } finally {
+      navigate("/login");
+    }
+  };
+
   const navItems = [
-    { label: "🏠 Dashboard", path: "/" },
-    { label: "📰 Theme Drafts", path: "/drafts/themes" },
-    { label: "📖 Story Drafts", path: "/drafts/stories" },
-    { label: "⚙️ Prompt Lab", path: "/promptlab" }, // ✅ New link
+    { label: "🏠 Dashboard", path: "/app" },
+    { label: "📰 Theme Drafts", path: "/app/drafts/themes" },
+    { label: "📖 Story Drafts", path: "/app/drafts/stories" },
+    { label: "⚙️ Prompt Lab", path: "/app/promptlab" }, // ✅ New link
   ];
 
   return (
@@ -49,14 +69,37 @@ export default function Layout() {
       <main className="flex-1 overflow-y-auto">
         <header className="bg-white shadow-sm p-4 flex justify-between items-center">
           <h2 className="text-lg font-semibold">Content Manager</h2>
-          <a
-            href="https://waitwhat.news"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-blue-600 hover:underline"
-          >
-            View Live Site →
-          </a>
+          <div className="flex items-center gap-3 text-sm">
+            {user?.email && (
+              <span className="text-gray-500 hidden sm:inline">
+                Signed in as {user.email}
+              </span>
+            )}
+            {!user && (
+              <button
+                onClick={() => navigate("/login")}
+                className="text-blue-600 hover:underline"
+              >
+                Login
+              </button>
+            )}
+            {user && (
+              <button
+                onClick={handleLogout}
+                className="text-red-600 hover:underline"
+              >
+                Logout
+              </button>
+            )}
+            <a
+              href="https://waitwhat.news"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline"
+            >
+              View Live Site →
+            </a>
+          </div>
         </header>
 
         <div className="p-6">

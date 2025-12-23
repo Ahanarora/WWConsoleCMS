@@ -1,3 +1,5 @@
+//src/components/StatCard.tsx
+
 interface Props {
   label: string;
   value: number | string;

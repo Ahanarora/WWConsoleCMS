@@ -100,7 +100,7 @@ export default function DraftsStories() {
         imageUrl: "",
       });
 
-      navigate(`/drafts/${id}`);
+      navigate(`/app/drafts/${id}`);
     } catch (err) {
       console.error("Error creating draft:", err);
       alert("Failed to create draft");
@@ -218,12 +218,15 @@ export default function DraftsStories() {
     <p className="text-sm text-gray-500">
       {draft.category} • {draft.subcategory || "—"} • {draft.status}
     </p>
+    <p className="text-sm text-gray-600 line-clamp-2">
+      {draft.cardDescription || draft.overview || ""}
+    </p>
     <p className="text-xs text-gray-400 font-mono">ID: {draft.id}</p>
   </div>
 
   <div className="flex flex-wrap items-center gap-2 text-sm">
     <button
-      onClick={() => navigate(`/drafts/${draft.id}`)}
+      onClick={() => navigate(`/app/drafts/${draft.id}`)}
       className="text-blue-600 hover:underline"
     >
       Edit
@@ -247,28 +250,30 @@ export default function DraftsStories() {
       Copy ID
     </button>
 
+    {/* 💡 Copy slug */}
+    {draft.slug && (
+      <button
+        onClick={() => {
+          navigator.clipboard.writeText(draft.slug || "");
+          alert("📋 Slug copied to clipboard!");
+        }}
+        className="text-purple-600 hover:underline"
+      >
+        Copy Slug
+      </button>
+    )}
+
     {/* 💡 Copy internal link syntax */}
     <button
       onClick={() => {
-        const text = `[${draft.title}](@story/${draft.id})`;
+        const slugOrId = draft.slug || draft.id;
+        const text = `[${draft.title}](@story/${slugOrId})`;
         navigator.clipboard.writeText(text);
         alert("📋 Internal link syntax copied!");
       }}
       className="text-green-600 hover:underline"
     >
       Copy Internal Link
-    </button>
-
-    {/* 💡 Copy external URL version (if needed later) */}
-    <button
-      onClick={() => {
-        const text = `[${draft.title}](https://waitwhat.news/story/${draft.id})`;
-        navigator.clipboard.writeText(text);
-        alert("🌐 External link copied!");
-      }}
-      className="text-purple-600 hover:underline"
-    >
-      Copy External Link
     </button>
   </div>
 </li>

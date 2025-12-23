@@ -1,23 +1,33 @@
+//src/components/DraftCard.tsx
+
 import { Link } from "react-router-dom";
 
 interface Props {
   id: string;
   title: string;
   overview: string;
+  cardDescription?: string;
   onDelete: () => void;
 }
 
-export default function DraftCard({ id, title, overview, onDelete }: Props) {
+export default function DraftCard({
+  id,
+  title,
+  overview,
+  cardDescription,
+  onDelete,
+}: Props) {
+  const preview = cardDescription || overview;
   return (
     <div className="bg-white p-5 rounded-xl shadow-sm hover:shadow-md transition flex flex-col justify-between">
       <div>
         <h3 className="font-semibold text-lg text-gray-800 mb-1">{title}</h3>
-        <p className="text-gray-600 text-sm line-clamp-3">{overview}</p>
+        <p className="text-gray-600 text-sm line-clamp-3">{preview}</p>
       </div>
 
       <div className="flex justify-end gap-4 mt-4 text-sm">
         <Link
-          to={`/drafts/${id}`}
+          to={`/app/drafts/${id}`}
           className="text-blue-600 hover:underline font-medium"
         >
           Edit

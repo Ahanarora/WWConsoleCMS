@@ -61,7 +61,7 @@ export async function generateTimeline(draft: Draft): Promise<TimelineEvent[]> {
 {
   "timeline": [
     { "date": "YYYY-MM-DD", "event": "string", "description": "string",
-      "significance": 1|2|3, "imageUrl": null, "sourceLink": null }
+      "significance": 1|2|3, "sourceLink": null }
   ]
 }`;
 

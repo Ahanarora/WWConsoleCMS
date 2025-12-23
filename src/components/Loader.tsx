@@ -1,3 +1,5 @@
+//src/components/Loader.tsx
+
 export default function Loader() {
   return (
     <div className="fixed inset-0 bg-gray-900 bg-opacity-30 flex items-center justify-center z-40">

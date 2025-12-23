@@ -5,15 +5,19 @@
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { app, db } from "../firebase";
 import { doc, getDoc } from "firebase/firestore";
+import type { SourceItem } from "@ww/shared";
 
-export interface SourceItem {
+// Raw shape coming back from the Cloud Function / Serper layer
+export interface SerperSourceRaw {
   title: string;
   link: string;
-  imageUrl: string | null;
   sourceName: string;
-  pubDate?: string;
+  imageUrl?: string | null;
+  pubDate?: string | null;
+  provider?: string; // sometimes returned by backend; optional here
 }
 
+// Canonical app-level response type should use shared types
 export interface FetchEventCoverageResponse {
   sources: SourceItem[];
 }
@@ -55,6 +59,18 @@ async function buildSerperQuery({
   }
 }
 
+function toSharedSourceItem(raw: SerperSourceRaw): SourceItem {
+  // Normalize optional/undefined → null where applicable
+  return {
+    title: raw.title,
+    link: raw.link,
+    sourceName: raw.sourceName,
+    imageUrl: raw.imageUrl ?? null,
+    pubDate: raw.pubDate ?? null,
+    provider: (raw.provider as any) ?? "serper",
+  } as SourceItem;
+}
+
 // -----------------------------------------------------
 // ✅ Old 3-argument version
 // -----------------------------------------------------
@@ -70,8 +86,17 @@ export async function fetchEventCoverage(
     const query = await buildSerperQuery({ title: event, event, description });
     console.log("🔍 Serper query:", query);
 
+    // Backend might return either {sources: SerperSourceRaw[]} or already-shared-like sources.
     const result = await callable({ title: query, description, date });
-    return result.data as FetchEventCoverageResponse;
+    const data = result.data as any;
+
+    const rawSources: SerperSourceRaw[] = Array.isArray(data?.sources)
+      ? data.sources
+      : [];
+
+    const sources: SourceItem[] = rawSources.map(toSharedSourceItem);
+
+    return { sources };
   } catch (error: any) {
     console.error("❌ Error calling fetchEventCoverage:", error);
     throw new Error(error.message || "Failed to fetch event coverage");
