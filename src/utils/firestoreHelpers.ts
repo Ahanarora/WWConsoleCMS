@@ -134,12 +134,7 @@ export interface Draft {
   editorNotes?: string;
 
   updatedAt?: any;
-<<<<<<< HEAD
-    usePhasedTimeline?: boolean; // toggle for enabling phases
-  phases?: TimelinePhase[];    // AI-generated or manual grouping
-=======
   createdAt?: any;
->>>>>>> shared-normalize-timeline
 }
 
 // ---------------------------
