@@ -4,6 +4,11 @@
     "runtime": "nodejs20",
     "region": "asia-south1"
   },
+  
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+
   "hosting": {
     "public": "dist",
     "ignore": [
@@ -20,4 +25,5 @@
   "dataconnect": {
     "source": "dataconnect"
   }
+  
 }

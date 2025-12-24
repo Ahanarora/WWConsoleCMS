@@ -4,11 +4,11 @@
 // PROMPTS ARE LOADED FROM Firestore (PromptLab)
 // -----------------------------------------------------
 
-import { onCall } from "firebase-functions/v2/https";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
 import axios from "axios";
 import * as admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
-
+import { requireAdmin } from "./utils/requireAdmin";
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -37,25 +37,31 @@ interface SonarTimelineResult {
   events: SonarTimelineEvent[];
 }
 
-export const fetchSonarTimeline = onCall(async (request) => {
-  console.log("⚡ fetchSonarTimeline invoked with:", request.data);
+export const fetchSonarTimeline = onCall(
+  { timeoutSeconds: 120 },
+  async (request) => {
+    requireAdmin(request);
+    console.log("⚡ fetchSonarTimeline invoked with:", request.data);
 
-  if (!PERPLEXITY_API_KEY) {
-    console.error("❌ Missing PERPLEXITY_API_KEY");
-    throw new Error("Missing PERPLEXITY_API_KEY");
-  }
+    if (!PERPLEXITY_API_KEY) {
+      console.error("❌ Missing PERPLEXITY_API_KEY");
+      throw new HttpsError("failed-precondition", "Missing PERPLEXITY_API_KEY");
+    }
 
-  const { title, overview } = request.data || {};
-  if (!title) {
-    throw new Error("Title is required for timeline generation");
-  }
+    const { title, overview } = request.data || {};
+    if (typeof title !== "string" || title.trim().length < 3 || title.length > 200) {
+      throw new HttpsError("invalid-argument", "Title must be 3–200 characters.");
+    }
+    if (typeof overview === "string" && overview.length > 5000) {
+      throw new HttpsError("invalid-argument", "Overview too long.");
+    }
 
   // -------------------------------------------------
   // LOAD PROMPTS FROM FIRESTORE (PromptLab)
   // -------------------------------------------------
 
-  const settingsSnap = await db.doc("settings/global").get();
-  const sonarSettings = settingsSnap.data()?.sonar || {};
+    const settingsSnap = await db.doc("settings/global").get();
+    const sonarSettings = settingsSnap.data()?.sonar || {};
 
   const systemPrompt: string =
     sonarSettings.timelineSystemPrompt ||
@@ -88,112 +94,113 @@ IMPORTANT RULES:
 - DO NOT output anything except JSON.
 `;
 
-  const userPrompt = userPromptTemplate
-    .replace("{{title}}", title)
-    .replace("{{overview}}", overview || "(none provided)");
+    const userPrompt = userPromptTemplate
+      .replace("{{title}}", title)
+      .replace("{{overview}}", overview || "(none provided)");
 
-  const model = sonarSettings.model || "sonar";
+    const model = sonarSettings.model || "sonar";
 
   // -------------------------------------------------
   // HELPER: call Sonar
   // -------------------------------------------------
 
-  async function callSonar(prompt: string, tokenLimit: number) {
-    return axios.post(
-      "https://api.perplexity.ai/chat/completions",
-      {
-        model,
-        temperature: 0.1,
-        max_tokens: tokenLimit,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: prompt },
-        ],
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${PERPLEXITY_API_KEY}`,
-          "Content-Type": "application/json",
+    async function callSonar(prompt: string, tokenLimit: number) {
+      return axios.post(
+        "https://api.perplexity.ai/chat/completions",
+        {
+          model,
+          temperature: 0.1,
+          max_tokens: tokenLimit,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: prompt },
+          ],
         },
-        timeout: 180000,
-      }
-    );
-  }
+        {
+          headers: {
+            Authorization: `Bearer ${PERPLEXITY_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          timeout: 180000,
+        }
+      );
+    }
 
   // -------------------------------------------------
   // PRIMARY ATTEMPT
   // -------------------------------------------------
 
-  let content: string | null = null;
+    let content: string | null = null;
 
   try {
-    const start = Date.now();
-    const response = await callSonar(userPrompt, 4096);
-    const elapsed = Date.now() - start;
+      const start = Date.now();
+      const response = await callSonar(userPrompt, 4096);
+      const elapsed = Date.now() - start;
 
-    console.log(`✅ Sonar responded in ${elapsed} ms`);
-    content = response.data?.choices?.[0]?.message?.content || null;
-  } catch (err: any) {
-    console.error("❌ Sonar API error:", err?.message);
-    return { events: [] };
-  }
+      console.log(`✅ Sonar responded in ${elapsed} ms`);
+      content = response.data?.choices?.[0]?.message?.content || null;
+    } catch (err: any) {
+      console.error("❌ Sonar API error:", err?.message);
+      throw new HttpsError("internal", "Sonar API error");
+    }
 
-  if (!content) {
-    console.error("❌ Empty content from Sonar");
-    return { events: [] };
-  }
+    if (!content) {
+      console.error("❌ Empty content from Sonar");
+      throw new HttpsError("internal", "Empty response from Sonar");
+    }
 
   // -------------------------------------------------
   // PARSE JSON (with retry)
   // -------------------------------------------------
 
-  let parsed: SonarTimelineResult | null = null;
+    let parsed: SonarTimelineResult | null = null;
 
   try {
-    parsed = JSON.parse(content);
-  } catch {
-    try {
-      const retry = await callSonar(
-        userPrompt + `
+      parsed = JSON.parse(content);
+    } catch {
+      try {
+        const retry = await callSonar(
+          userPrompt + `
 IMPORTANT OVERRIDE:
 - No more than 12 events
 - Short descriptions
 - VALID JSON ONLY
 `,
-        3000
-      );
+          3000
+        );
 
-      parsed = JSON.parse(
-        retry.data?.choices?.[0]?.message?.content || ""
-      );
-    } catch {
-      console.error("❌ JSON parse failed twice");
-      return { events: [] };
+        parsed = JSON.parse(
+          retry.data?.choices?.[0]?.message?.content || ""
+        );
+      } catch {
+        console.error("❌ JSON parse failed twice");
+        throw new HttpsError("internal", "Failed to parse Sonar output");
+      }
     }
-  }
 
-  if (!parsed || !Array.isArray(parsed.events)) {
-    console.error("❌ Invalid Sonar output shape");
-    return { events: [] };
-  }
+    if (!parsed || !Array.isArray(parsed.events)) {
+      console.error("❌ Invalid Sonar output shape");
+      throw new HttpsError("internal", "Invalid Sonar output");
+    }
 
   // -------------------------------------------------
   // SANITIZE
   // -------------------------------------------------
 
-  const cleanEvents = parsed.events.map((ev) => ({
-    date: ev.date ?? null,
-    title: (ev.title || "").trim(),
-    description: (ev.description || "").trim(),
-    importance: ev.importance ?? 2,
-    sources: (ev.sources || []).map((s) => ({
-      title: s.title || "",
-      url: s.url || "",
-      sourceName: s.sourceName || "",
-      publishedAt: s.publishedAt || null,
-    })),
-  }));
+    const cleanEvents = parsed.events.map((ev) => ({
+      date: ev.date ?? null,
+      title: (ev.title || "").trim(),
+      description: (ev.description || "").trim(),
+      importance: ev.importance ?? 2,
+      sources: (ev.sources || []).map((s) => ({
+        title: s.title || "",
+        url: s.url || "",
+        sourceName: s.sourceName || "",
+        publishedAt: s.publishedAt || null,
+      })),
+    }));
 
-  console.log(`📚 Timeline events count: ${cleanEvents.length}`);
-  return { events: cleanEvents };
-});
+    console.log(`📚 Timeline events count: ${cleanEvents.length}`);
+    return { events: cleanEvents };
+  }
+);

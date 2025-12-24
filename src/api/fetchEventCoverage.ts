@@ -2,10 +2,11 @@
 // src/api/fetchEventCoverage.ts
 // ----------------------------------------
 
-import { getFunctions, httpsCallable } from "firebase/functions";
-import { app, db } from "../firebase";
+import { functions, db } from "../firebase";
+import { httpsCallable } from "firebase/functions";
 import { doc, getDoc } from "firebase/firestore";
 import type { SourceItem } from "@ww/shared";
+
 
 // Raw shape coming back from the Cloud Function / Serper layer
 export interface SerperSourceRaw {
@@ -79,7 +80,7 @@ export async function fetchEventCoverage(
   description: string,
   date?: string
 ): Promise<FetchEventCoverageResponse> {
-  const functions = getFunctions(app, "asia-south1");
+
   const callable = httpsCallable(functions, "fetchEventCoverage");
 
   try {

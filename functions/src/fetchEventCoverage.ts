@@ -3,14 +3,12 @@
 // Region: asia-south1
 // -----------------------------------------------------
 
-import { onCall } from "firebase-functions/v2/https";
-import { setGlobalOptions } from "firebase-functions/v2";
-import axios from "axios";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
 
-// -----------------------------------------------------
-// Global config (Gen-2)
-// -----------------------------------------------------
-setGlobalOptions({ region: "asia-south1" });
+import axios from "axios";
+import { requireAdmin } from "./utils/requireAdmin";
+
+
 
 // Read env at module load (Gen-2 supported)
 const SERPER_API_KEY = process.env.SERPER_API_KEY;
@@ -37,19 +35,16 @@ function buildSerperDateTBS(dateStr?: string): string | null {
 // -----------------------------------------------------
 // Main callable
 // -----------------------------------------------------
-export const fetchEventCoverage = onCall(async (request) => {
-  console.log("🔐 ENV CHECK", {
-    hasSerper: Boolean(process.env.SERPER_API_KEY),
-    region: process.env.FUNCTION_REGION,
-    node: process.version,
-  });
+export const fetchEventCoverage = onCall(
+  { timeoutSeconds: 120 },
+  async (request) => {
+    requireAdmin(request);
 
-  if (!SERPER_API_KEY) {
-    console.error("❌ SERPER_API_KEY missing");
-    return { sources: [] };
-  }
+    if (!SERPER_API_KEY) {
+      console.error("❌ SERPER_API_KEY missing");
+      throw new HttpsError("failed-precondition", "SERPER_API_KEY missing");
+    }
 
-  try {
     console.log("⚡ fetchEventCoverage invoked with:", request.data);
 
     const {
@@ -61,114 +56,120 @@ export const fetchEventCoverage = onCall(async (request) => {
       lang = "en",
     } = request.data ?? {};
 
-    // Prefer title → event → description
     const query = (title || event || description || "").trim();
-    if (!query) {
-      console.warn("⚠️ Missing query input");
-      return { sources: [] };
+    if (typeof query !== "string" || query.length < 3 || query.length > 300) {
+      throw new HttpsError("invalid-argument", "Invalid query.");
     }
 
-    console.log("🔍 Serper query:", query);
-
-    const payload: any = {
-      q: query,
-      num: 10,
-      gl: region,
-      hl: lang,
-    };
-
-    const tbs = buildSerperDateTBS(date);
-    if (tbs) {
-      payload.tbs = tbs;
-      console.log("📅 Applying date window:", tbs);
+    if (typeof region !== "string" || region.length === 0) {
+      throw new HttpsError("invalid-argument", "Invalid region.");
+    }
+    if (typeof lang !== "string" || lang.length === 0) {
+      throw new HttpsError("invalid-argument", "Invalid language.");
     }
 
-    const headers = {
-      "X-API-KEY": SERPER_API_KEY,
-      "Content-Type": "application/json",
-    };
+    try {
+      console.log("🔍 Serper query:", query);
 
-    // -------------------------------------------------
-    // 1️⃣ Try Serper /news
-    // -------------------------------------------------
-    console.log("🌐 Calling Serper /news");
+      const payload: any = {
+        q: query,
+        num: 10,
+        gl: region,
+        hl: lang,
+      };
 
-    let res = await axios.post(
-      "https://google.serper.dev/news",
-      payload,
-      { headers, timeout: 10000 }
-    );
+      const tbs = buildSerperDateTBS(date);
+      if (tbs) {
+        payload.tbs = tbs;
+        console.log("📅 Applying date window:", tbs);
+      }
 
-    let items = res.data?.news ?? [];
-    console.log("📰 /news results:", items.length);
+      const headers = {
+        "X-API-KEY": SERPER_API_KEY,
+        "Content-Type": "application/json",
+      };
 
-    // -------------------------------------------------
-    // 2️⃣ Fallback → /search
-    // -------------------------------------------------
-    if (items.length === 0) {
-      console.log("🔁 No /news results — falling back to /search");
+      // -------------------------------------------------
+      // 1️⃣ Try Serper /news
+      // -------------------------------------------------
+      console.log("🌐 Calling Serper /news");
 
-      const fallback = await axios.post(
-        "https://google.serper.dev/search",
-        {
-          q: query,
-          num: 10,
-          gl: region,
-          hl: lang,
-        },
+      let res = await axios.post(
+        "https://google.serper.dev/news",
+        payload,
         { headers, timeout: 10000 }
       );
 
-      items =
-        fallback.data?.news ||
-        fallback.data?.organic ||
-        [];
+      let items = res.data?.news ?? [];
+      console.log("📰 /news results:", items.length);
 
-      console.log("🔎 /search results:", items.length);
+      // -------------------------------------------------
+      // 2️⃣ Fallback → /search
+      // -------------------------------------------------
+      if (items.length === 0) {
+        console.log("🔁 No /news results — falling back to /search");
+
+        const fallback = await axios.post(
+          "https://google.serper.dev/search",
+          {
+            q: query,
+            num: 10,
+            gl: region,
+            hl: lang,
+          },
+          { headers, timeout: 10000 }
+        );
+
+        items =
+          fallback.data?.news ||
+          fallback.data?.organic ||
+          [];
+
+        console.log("🔎 /search results:", items.length);
+      }
+
+      // -------------------------------------------------
+      // Normalize + dedupe
+      // -------------------------------------------------
+      const normalizeLink = (url?: string) =>
+        url?.replace(/^https?:\/\//, "").split("?")[0];
+
+      const sources = Array.from(
+        new Map(
+          items
+            .filter((n: any) => n?.link)
+            .map((n: any) => [
+              normalizeLink(n.link),
+              {
+                title: n.title || "",
+                link: n.link,
+                sourceName: n.source || n.domain || "Unknown",
+                pubDate: n.date || null,
+                provider: "serper",
+              },
+            ])
+        ).values()
+      );
+
+      console.log("🧮 Unique sources returned:", sources.length);
+
+      return { sources };
+    } catch (err: any) {
+      console.error("❌ fetchEventCoverage failed");
+
+      if (err.response) {
+        console.error("❌ Serper HTTP error", {
+          status: err.response.status,
+          data: err.response.data,
+        });
+      } else {
+        console.error("❌ Runtime error", {
+          message: err.message,
+          stack: err.stack,
+        });
+      }
+
+      throw new HttpsError("internal", "fetchEventCoverage failed");
     }
-
-    // -------------------------------------------------
-    // Normalize + dedupe
-    // -------------------------------------------------
-    const normalizeLink = (url?: string) =>
-      url?.replace(/^https?:\/\//, "").split("?")[0];
-
-    const sources = Array.from(
-      new Map(
-        items
-          .filter((n: any) => n?.link)
-          .map((n: any) => [
-            normalizeLink(n.link),
-            {
-              title: n.title || "",
-              link: n.link,
-              sourceName: n.source || n.domain || "Unknown",
-              pubDate: n.date || null,
-              provider: "serper",
-            },
-          ])
-      ).values()
-    );
-
-    console.log("🧮 Unique sources returned:", sources.length);
-
-    return { sources };
-  } catch (err: any) {
-    console.error("❌ fetchEventCoverage failed");
-
-    if (err.response) {
-      console.error("❌ Serper HTTP error", {
-        status: err.response.status,
-        data: err.response.data,
-      });
-    } else {
-      console.error("❌ Runtime error", {
-        message: err.message,
-        stack: err.stack,
-      });
-    }
-
-    // Never throw → prevents INTERNAL on client
-    return { sources: [] };
   }
-});
+);

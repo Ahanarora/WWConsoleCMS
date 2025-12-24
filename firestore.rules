@@ -1,0 +1,44 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null && request.auth.uid == "YOUR_ADMIN_UID_HERE";
+    }
+
+    // --- CMS-only / sensitive collections (examples) ---
+    match /prompts/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /drafts/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /adminSettings/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // --- Content collections: public read, admin write ---
+    match /stories/{id} {
+      allow read: if true;          // or: if request.auth != null
+      allow write: if isAdmin();
+    }
+
+    match /themes/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // If you have timelines as separate collection:
+    match /timelines/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Default deny everything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

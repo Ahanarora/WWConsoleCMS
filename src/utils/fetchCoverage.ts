@@ -2,11 +2,10 @@
 // src/utils/fetchCoverage.ts
 // ----------------------------------------
 
-import { getFunctions, httpsCallable } from "firebase/functions";
-import { app } from "../firebase";
+import { functions } from "../firebase";
+import { httpsCallable } from "firebase/functions";
 import type { SourceItem } from "@ww/shared";
 
-const functions = getFunctions(app, "asia-south1");
 
 interface FetchEventCoverageRequest {
   event: string;
